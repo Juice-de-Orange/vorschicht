@@ -1,0 +1,7 @@
+# Secret guard before every commit: the same gitleaks version and rule set the gate uses
+# (infra/docker/Dockerfile.gate, .gitleaks.toml). Install with `pre-commit install`.
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks

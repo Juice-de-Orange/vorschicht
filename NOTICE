@@ -1,0 +1,10 @@
+Vorschicht
+Copyright 2026 Max Oberrauch
+
+This product includes the Silkscreen font by Jason Kottke, used under the
+SIL Open Font License, Version 1.1 (apps/web/src/styles/schriften/OFL.txt).
+
+Container images built from infra/docker/ install third-party programs at build
+time (poppler-utils, gitleaks, supercronic, tini, git, curl, openssh, ripgrep,
+ca-certificates, and the Claude Code CLI from npm), each under its own licence;
+none of them is vendored in this repository.

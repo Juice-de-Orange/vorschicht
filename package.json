@@ -1,0 +1,52 @@
+{
+  "name": "vorschicht",
+  "version": "0.0.0",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.1.2",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "check:hook-containment": "node infra/scripts/check-hook-containment.mjs",
+    "check:mcp-handshake": "node infra/scripts/check-mcp-handshake.mjs",
+    "check:kaltstart": "node infra/scripts/check-kaltstart.mjs",
+    "check:leistungsbudget": "node infra/scripts/check-leistungsbudget.mjs",
+    "check:pdf-extraction": "node infra/scripts/check-pdf-extraction.mjs",
+    "check:legal-review": "infra/scripts/with-test-db.sh node infra/scripts/check-legal-review.mjs",
+    "check:migration-review": "infra/scripts/check-migration-review.sh",
+    "check:reviewer-claims": "infra/scripts/check-reviewer-claims.sh",
+    "check:runner": "infra/scripts/check-runner.sh",
+    "check:secrets-history": "node infra/scripts/check-secrets-history.mjs",
+    "db:generate": "pnpm --filter @vorschicht/db generate",
+    "db:migrate": "pnpm --filter @vorschicht/db migrate",
+    "fix": "biome check --write .",
+    "gate": "node infra/scripts/gate.mjs",
+    "gate:build": "pnpm -r --if-present build",
+    "gate:cli-contract": "node infra/scripts/gate-cli-contract.mjs",
+    "gate:commits": "node infra/scripts/gate-commits.mjs",
+    "gate:contracts": "node infra/scripts/gate-contracts.mjs",
+    "gate:lint": "biome check --error-on-warnings .",
+    "gate:migrations": "node infra/scripts/gate-migrations.mjs",
+    "gate:e2e": "infra/scripts/gate-e2e.sh",
+    "gate:secrets": "node infra/scripts/gate-secrets.mjs",
+    "gate:test": "vitest run",
+    "gate:typecheck": "tsc --build --force && tsc -p tsconfig.test.json && pnpm --filter @vorschicht/web typecheck && tsc --noEmit -p e2e/tsconfig.json",
+    "onboard": "infra/scripts/onboard.sh",
+    "check:kennzahlen": "node infra/scripts/check-kennzahlen.mjs"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@biomejs/biome": "^2.3.14",
+    "@playwright/test": "^1.57.1",
+    "@vorschicht/db": "workspace:*",
+    "@vorschicht/shared": "workspace:*",
+    "@types/node": "^22.19.2",
+    "chrome-launcher": "^1.2.0",
+    "lighthouse": "^13.4.1",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

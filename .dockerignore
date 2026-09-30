@@ -1,0 +1,38 @@
+# Keeps the build context hermetic.
+#
+# Without this the build depends on host state, and the failure mode is nasty:
+# a stale `*.tsbuildinfo` copied in from the host tells `tsc --build` that
+# everything is already compiled, so it skips the build — and if `dist/` did not
+# come along too, the image ships without the code it is supposed to run. That
+# is exactly what happened on the first production deploy, while the identical
+# Dockerfile produced a working image locally because a built `dist/` happened
+# to be lying around.
+#
+# Everything the image needs is either in git or produced inside the builder.
+
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+*.tsbuildinfo
+**/*.tsbuildinfo
+
+# secrets and local state
+.env
+.env.*
+!.env.example
+.vorschicht-data/
+.build-logs/
+
+# test and tooling output
+coverage/
+test-results/
+playwright-report/
+e2e/
+playwright.config.ts
+
+# vcs and editor
+.git/
+.gitignore
+.idea/
+.vscode/

@@ -1,0 +1,37 @@
+# Minor and patch updates are grouped; majors arrive one by one. Security updates are not affected
+# by these limits. Base images are pinned by digest in infra/docker/* and the Claude Code CLI version
+# is pinned in .env.example / Dockerfile.orchestrator (A27) — both change only through a deliberate
+# radar task, not a weekly update.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # Node 22 LTS is a spec decision (A4).
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: docker
+    directories: [/infra/docker]
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    ignore:
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
+      - dependency-name: postgres
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ['*']

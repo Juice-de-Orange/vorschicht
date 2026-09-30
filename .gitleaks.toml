@@ -1,0 +1,47 @@
+# Vorschicht secret-scan configuration (baseline gate, §11.4 / §19).
+# Extends the upstream default rule set and adds the credential classes this
+# project actually handles. Never loosen this file to make a scan pass — a hit
+# is a blocker like any other finding (§11).
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "anthropic-oauth-token"
+description = "Claude Code subscription OAuth token (claude setup-token)"
+regex = '''sk-ant-oat[0-9a-zA-Z_-]{20,}'''
+keywords = ["sk-ant-oat"]
+
+[[rules]]
+id = "anthropic-api-key"
+description = "Anthropic API key — forbidden in this project by §2, not merely secret"
+regex = '''sk-ant-api[0-9a-zA-Z_-]{20,}'''
+keywords = ["sk-ant-api"]
+
+[[rules]]
+id = "ntfy-access-token"
+description = "ntfy access token"
+regex = '''\btk_[a-z0-9]{25,}'''
+keywords = ["tk_"]
+
+[[rules]]
+id = "cloudflare-tunnel-token"
+description = "cloudflared tunnel token (long base64 JSON blob)"
+regex = '''eyJhIjoi[0-9a-zA-Z+/=_-]{60,}'''
+keywords = ["eyJhIjoi"]
+
+[allowlist]
+description = "Template and documentation placeholders only"
+paths = [
+  '''\.gitleaks\.toml$''',
+]
+regexes = [
+  '''sk-ant-oat01-\.\.\.''',
+  # E2E fixture: a token that literally says it is a placeholder. Narrow on
+  # purpose — a real token would have to contain the word right after the
+  # prefix, which cannot happen.
+  '''sk-ant-oat01-placeholder[0-9a-zA-Z_-]*''',
+  '''tk_\.\.\.''',
+  '''tk_e2e_placeholder''',
+  '''change-me''',
+]

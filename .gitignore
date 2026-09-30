@@ -1,0 +1,52 @@
+# --- dependencies & build output ---
+node_modules/
+dist/
+build/
+.turbo/
+*.tsbuildinfo
+
+# --- secrets: never, under any circumstance ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+!**/testdata/*.key
+id_rsa*
+id_ed25519*
+*.p12
+credentials*
+secrets*
+.npmrc
+.git-credentials
+
+# --- runtime & local state ---
+.build-logs/
+.vorschicht-data/
+coverage/
+playwright-report/
+test-results/
+STOP
+
+# --- editors / OS ---
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Arbeitskopien paralleler Implementierer (Workflow-Tool). Liegen im Repo,
+# gehoeren aber nie hinein: biome findet sonst verschachtelte Konfigurationen,
+# und `git add -A` zieht sie als eingebettete Repositories mit.
+.claude/worktrees/
+
+# Der pnpm-Speicher, den `gate-in-container.sh` und der Rollout-Build anlegen.
+# Er stand am 25.8.2026 als unversioniert im **Produktionsbaum** auf dem Produktionshost
+# und haette den naechsten Rollout blockiert: `rollout-remote.sh`
+# verweigert bei schmutzigem Arbeitsbaum, und zwar zu Recht — nur war der
+# Schmutz hier ein Bauartefakt und kein Eingriff von Hand.
+.pnpm-store/
+
+# --- release-audit artefacts and local AI-tool state: never in the repo ---
+.opensource/
+.claude/settings.local.json
+.mcp.json

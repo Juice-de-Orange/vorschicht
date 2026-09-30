@@ -1,0 +1,17 @@
+# Der Arbeitsbaum hat dieselben Bytes wie das Repository und wie der Produktionshost.
+#
+# Ohne das setzt git auf Windows CRLF beim Auschecken (core.autocrlf), und das
+# ist nicht kosmetisch: biome meldet dann jede der 275 Dateien als unformatiert,
+# und der Parser der Betriebspruefung findet in einer CRLF-`CLAUDE.md` vier
+# Annahmen statt 115 und null Phasen — er scheitert leise, nicht laut.
+#
+# `text=auto eol=lf` schlaegt `core.autocrlf`, gilt fuer jede Plattform und
+# aendert nichts an dem, was das Repository speichert: dort stand immer LF.
+* text=auto eol=lf
+
+# Binaerdateien bleiben unangetastet.
+*.png binary
+*.jpg binary
+*.ico binary
+*.pdf binary
+*.gz binary

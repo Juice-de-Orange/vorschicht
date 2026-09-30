@@ -1,0 +1,9 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+# Only esbuild (via vite) may run install scripts. Everything else stays
+# script-less — an autonomous system should not execute arbitrary postinstall
+# code just because a transitive dependency asked nicely.
+allowBuilds:
+  esbuild: true

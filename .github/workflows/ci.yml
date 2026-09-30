@@ -1,0 +1,191 @@
+# CI for Vorschicht.
+#
+# Four jobs, deliberately separate, because they fail for different reasons:
+#
+#   gate      the project's own baseline suite (CLAUDE.md §11): typecheck, lint, unit tests,
+#             integration tests against a real PostgreSQL 16, migrations, contracts, build,
+#             the documentation guard. This is `pnpm gate` minus the steps that need a browser
+#             or the pinned Claude CLI.
+#   e2e       the Playwright suite against the real API and a real database.
+#   secrets   gitleaks over the full history with the repository's rule set.
+#   images    the four Dockerfiles build.
+#
+# What CI cannot do: the `pnpm check:*` scripts start real Claude Code sessions on a subscription
+# and are never run here (§2: no API key, ever). The `cli-contract` gate step needs the pinned CLI;
+# it runs in the gate container (infra/scripts/gate-in-container.sh), not here.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: "true"
+  DO_NOT_TRACK: "1"
+
+jobs:
+  gate:
+    name: Gate (typecheck, lint, tests, build)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: vorschicht
+          POSTGRES_PASSWORD: vorschicht
+          POSTGRES_DB: vorschicht
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vorschicht"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://vorschicht:vorschicht@127.0.0.1:5432/vorschicht
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          # `gate:commits` and `check-secrets-history` read the history.
+          fetch-depth: 0
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+        with:
+          version: 11.1.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # gitleaks is a gate step (§11.4) and several tests assert its behaviour; same pin as the images.
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          curl -sSfL -o gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tgz" | sha256sum -c -
+          sudo tar -xzf gitleaks.tgz -C /usr/local/bin gitleaks
+          rm gitleaks.tgz
+          gitleaks version
+
+      # The merge queue asserts every commit it brings in is the bot's (A36), so the ambient
+      # identity has to be the bot's — same as infra/docker/Dockerfile.gate.
+      - name: Git identity for the integration tests
+        run: |
+          git config --global user.name 'Vorschicht Bot'
+          git config --global user.email 'vorschicht-bot@example.com'
+          git config --global init.defaultBranch main
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck (builds packages/*/dist)
+        run: pnpm gate:typecheck
+      - name: Lint
+        run: pnpm gate:lint
+      - name: Unit tests
+        run: pnpm gate:test
+      - name: Integration tests (real PostgreSQL)
+        run: pnpm exec vitest run .itest.ts
+      - name: Secrets scan (gate step)
+        run: pnpm gate:secrets
+      - name: Migrations
+        run: pnpm gate:migrations
+      - name: Result contracts
+        run: pnpm gate:contracts
+      - name: Commit messages
+        run: pnpm gate:commits
+      - name: Build
+        run: pnpm gate:build
+      - name: Documentation guard (README tally against CLAUDE.md §22)
+        run: node infra/scripts/gate-doku.mjs
+      - name: Performance budget file is consistent with its rationale
+        run: node infra/scripts/check-leistungsbudget.mjs --nur-artefakt
+
+  e2e:
+    name: Browser suite (Playwright)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: vorschicht
+          POSTGRES_PASSWORD: vorschicht
+          POSTGRES_DB: vorschicht
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vorschicht"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://vorschicht:vorschicht@127.0.0.1:5432/vorschicht
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+        with:
+          version: 11.1.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm gate:typecheck
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Playwright
+        run: pnpm gate:e2e
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report
+          retention-days: 7
+
+  secrets:
+    # Full-history secret scan on every PR and push. Same tool, version and rule set as the
+    # pre-commit hook and the gate.
+    name: Secret scan (gitleaks, full history)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          curl -sSfL -o gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tgz" | sha256sum -c -
+          tar -xzf gitleaks.tgz gitleaks
+      - name: Scan the full history
+        run: ./gitleaks git . --redact --no-banner --config .gitleaks.toml
+
+  images:
+    name: Container images build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: app
+        run: docker build -f infra/docker/Dockerfile.app .
+      - name: backup
+        run: docker build -f infra/docker/Dockerfile.backup .
+      - name: gate
+        run: docker build -f infra/docker/Dockerfile.gate .

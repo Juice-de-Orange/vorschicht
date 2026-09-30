@@ -1,0 +1,44 @@
+name: Bug report
+description: Something does not work as specified in CLAUDE.md or documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Security problems go through private reporting instead
+        (Security → Report a vulnerability). Please remove tokens, hostnames, credential ids and
+        transcript excerpts from anything you paste.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - orchestrator (scheduler, guardian, runner)
+        - gates / merge queue / deploy engine
+        - internal audit (Betriebsprüfung)
+        - server / API / SSE
+        - dashboard PWA
+        - infra (compose, images, scripts)
+        - docs
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect (cite the CLAUDE.md section if you can), what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Setup
+      description: Commit, host OS, Docker/Compose versions, Claude Code CLI version, plan profile.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs (redacted)
+      description: Gate output, daemon log lines, event-log rows.
+      render: shell

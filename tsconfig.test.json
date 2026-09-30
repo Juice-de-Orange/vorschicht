@@ -1,0 +1,37 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // The gate runner lives in `.mjs` files that bare `node` executes without a
+    // build step, so its test has to import one. Types are inferred from their
+    // JSDoc; `checkJs` stays off, because putting a decade of scripts under
+    // `strict` is a different change than testing one function.
+    "allowJs": true,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "types": ["node"]
+  },
+  "include": [
+    "packages/*/src/**/*.test.ts",
+    "apps/*/src/**/*.test.ts",
+    // Integration tests too. They were outside every tsconfig until now, so
+    // vitest stripped their types without checking any of them — which is
+    // exactly backwards, since these are the files that touch the database and
+    // the ones a refactor is most likely to break silently.
+    "packages/*/src/**/*.itest.ts",
+    "apps/*/src/**/*.itest.ts",
+    "infra/scripts/**/*.test.ts"
+  ],
+  // `apps/web` is checked by its own tsconfig instead, and that is the point
+  // rather than a tidy-up. This project has `types: ["node"]` and `lib: ES2023`
+  // with no DOM, so a dashboard test could not import anything touching
+  // `window` — which is why the deep-link test used to re-implement
+  // `segmentAfter` with a `slice` instead of importing it. The real function
+  // called `decodeURIComponent` unguarded, `/posteingang/%` threw `URIError`
+  // during render, and the whole dashboard went blank. The stand-in could not
+  // have found it; the real import does, and `apps/web/tsconfig.json` (DOM lib,
+  // `src/**/*`) still checks the file inside `gate:typecheck`'s third leg.
+  "exclude": ["node_modules", "**/dist/**", "apps/web/src/**"]
+}
