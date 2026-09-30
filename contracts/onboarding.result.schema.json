@@ -1,0 +1,188 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "done",
+        "needs_decision",
+        "failed",
+        "parked"
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "artifacts": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "followups": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "stack": {
+      "type": "string",
+      "minLength": 1
+    },
+    "defaultBranch": {
+      "type": "string",
+      "minLength": 1
+    },
+    "gates": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "review",
+              "typecheck",
+              "lint",
+              "test",
+              "secrets",
+              "build",
+              "changelog",
+              "docs",
+              "licenses",
+              "deps-audit",
+              "sast",
+              "migration-review",
+              "legal",
+              "a11y",
+              "e2e",
+              "lighthouse"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "command": {
+            "type": "string"
+          },
+          "rationale": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "id",
+          "enabled",
+          "rationale"
+        ]
+      }
+    },
+    "claimGranularity": {
+      "type": "string",
+      "enum": [
+        "file",
+        "directory",
+        "package"
+      ]
+    },
+    "claimRationale": {
+      "type": "string",
+      "minLength": 1
+    },
+    "migrationPaths": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "tools": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "deploy": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "type": "string",
+          "enum": [
+            "compose",
+            "static-rsync",
+            "none"
+          ]
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1
+        },
+        "healthUrl": {
+          "type": "string"
+        },
+        "composeFile": {
+          "type": "string"
+        },
+        "service": {
+          "type": "string"
+        },
+        "migrateCommand": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "method",
+        "rationale"
+      ]
+    },
+    "personalData": {
+      "type": "object",
+      "properties": {
+        "present": {
+          "type": "boolean"
+        },
+        "evidence": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "present"
+      ]
+    },
+    "departments": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "risks": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "status",
+    "summary",
+    "stack",
+    "defaultBranch",
+    "gates",
+    "claimGranularity",
+    "claimRationale",
+    "deploy",
+    "personalData"
+  ]
+}

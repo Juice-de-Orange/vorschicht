@@ -1,0 +1,78 @@
+{
+  "name": "@vorschicht/shared",
+  "version": "0.0.0",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./aufgaben": {
+      "types": "./dist/aufgaben.d.ts",
+      "default": "./dist/aufgaben.js"
+    },
+    "./berichte": {
+      "types": "./dist/berichte.d.ts",
+      "default": "./dist/berichte.js"
+    },
+    "./buero": {
+      "types": "./dist/buero.d.ts",
+      "default": "./dist/buero.js"
+    },
+    "./containment": {
+      "types": "./dist/containment.d.ts",
+      "default": "./dist/containment.js"
+    },
+    "./controlling": {
+      "types": "./dist/controlling.d.ts",
+      "default": "./dist/controlling.js"
+    },
+    "./einstellungen": {
+      "types": "./dist/einstellungen.d.ts",
+      "default": "./dist/einstellungen.js"
+    },
+    "./dokumente": {
+      "types": "./dist/dokumente.d.ts",
+      "default": "./dist/dokumente.js"
+    },
+    "./events": {
+      "types": "./dist/events.d.ts",
+      "default": "./dist/events.js"
+    },
+    "./gates": {
+      "types": "./dist/gates.d.ts",
+      "default": "./dist/gates.js"
+    },
+    "./inbox": {
+      "types": "./dist/inbox.d.ts",
+      "default": "./dist/inbox.js"
+    },
+    "./log": {
+      "types": "./dist/log.d.ts",
+      "default": "./dist/log.js"
+    },
+    "./personas": {
+      "types": "./dist/personas.d.ts",
+      "default": "./dist/personas.js"
+    },
+    "./quellen": {
+      "types": "./dist/quellen.d.ts",
+      "default": "./dist/quellen.js"
+    },
+    "./spuren": {
+      "types": "./dist/spuren.d.ts",
+      "default": "./dist/spuren.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^4.1.13"
+  }
+}

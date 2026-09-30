@@ -1,0 +1,22 @@
+{
+  "$comment": "Tables whose history may never be rewritten (§5, §18). Adding a table here obliges the corresponding migration to install a guard trigger named <table><guardSuffix>; gate:migrations fails the build otherwise. Removing a table from this list is a spec-level decision, not a refactor.",
+  "guardSuffix": "_append_only",
+  "tables": [
+    "event_log",
+    "audit_log",
+    "auth_events",
+    "agent_run_events",
+    "usage_samples",
+    "guardian_events",
+    "task_events",
+    "build_reports",
+    "audit_events",
+    "audit_finding_events",
+    "gate_runs",
+    "escalation_events",
+    "deployment_events",
+    "document_versions",
+    "source_events",
+    "reports"
+  ]
+}
