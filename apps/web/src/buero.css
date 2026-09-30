@@ -1,0 +1,225 @@
+/*
+ * §17.2's room — the parts a `<rect>` cannot draw.
+ *
+ * The furniture and the people are SVG (`buero-pixel.ts`); what is here is the
+ * room they stand in: the wall, the floor, the nameplate under each desk, and
+ * the arrangement that has to survive a 390 px screen. Everything is a hard
+ * gradient stop rather than a blur, because the whole look rests on there being
+ * no half-pixels anywhere — the operator's brief was "verpixelter Office Style,
+ * gemütlich und gut leserlich", and a soft shadow under a pixel desk reads as a
+ * mistake rather than as depth.
+ *
+ * **Every colour is `var(--vs-…, var(--px-…, #hex))` or a plain `--px-…`.** The
+ * design system being built in `apps/web/src/styles/` takes precedence where it
+ * has an opinion; the `--px-…` layer is this scene's own vocabulary and is what
+ * the Feierabend variant dims; the hex is what a checkout with neither draws.
+ * None of it is load-bearing: §17.2's five states are told apart by the shape
+ * of the bubble, the glyph in it and the German word beside it, and
+ * `buero-pixel.test.ts` asserts that with the colour taken away.
+ *
+ * **No animation, deliberately.** A blinking cursor or a rocking chair would be
+ * charming and would put motion on a page that redraws on every event of a
+ * studio's event stream — and §22's Phase 7 measures this page's latency. A
+ * room that is still is also a room whose screenshot is the room.
+ */
+
+.px-buero {
+  --px-ink: #2a2331;
+  --px-wandfarbe: #e9dfd1;
+  --px-leiste: #9c7b57;
+  --px-bodenfarbe: #c9a678;
+  --px-schild: #fdfaf3;
+
+  /* Ganzzahlig, immer. Jede Kante in dieser Ansicht liegt auf einem Vielfachen
+     davon; ein krummer Faktor macht aus harten Pixeln ungleich breite Streifen,
+     und dann sieht „verpixelt" nach Skalierungsfehler aus statt nach Absicht. */
+  --px-scale: 5;
+
+  border: 3px solid var(--vs-rahmen, var(--px-ink));
+  box-shadow: 6px 6px 0 rgb(42 35 49 / 18%);
+  margin: 0 0 1rem;
+  overflow: hidden;
+}
+
+/* Das Feierabendbüro: derselbe Raum, später. Nur Variablen — kein zweites
+   Bild, das mit dem ersten aus dem Tritt geraten kann. */
+.px-buero--feierabend {
+  --px-wandfarbe: #d6c9bb;
+  --px-bodenfarbe: #a98a63;
+  --px-holz: #8a6440;
+  --px-holz-hell: #a5805a;
+  --px-holz-dunkel: #63452a;
+  --px-stuhl: #4b5462;
+  --px-stuhl-hell: #626c7a;
+  --px-schild: #f3ece1;
+}
+
+/* ------------------------------------------------------------------ Wand */
+
+.px-wand {
+  position: relative;
+  height: calc(16px * var(--px-scale));
+  background-color: var(--vs-flaeche, var(--px-wandfarbe));
+  background-image: repeating-linear-gradient(90deg, rgb(0 0 0 / 5%) 0 4px, transparent 4px 20px);
+  border-bottom: 4px solid var(--px-leiste);
+}
+
+/* Die Wanddekoration wächst mit dem Raster mit — sonst schrumpft sie beim
+   nächsten Faktor relativ zu allem anderen und die Wand wirkt zu hoch. */
+.px-wand > * {
+  position: absolute;
+  bottom: calc(2px * var(--px-scale));
+}
+
+.px-fenster {
+  left: calc(4px * var(--px-scale));
+  width: calc(13px * var(--px-scale));
+  height: calc(9px * var(--px-scale));
+}
+
+.px-uhr {
+  right: calc(20px * var(--px-scale));
+  width: calc(9px * var(--px-scale));
+  height: calc(8px * var(--px-scale));
+}
+
+.px-pflanze {
+  right: calc(4px * var(--px-scale));
+  bottom: calc(-4px * var(--px-scale));
+  width: calc(9px * var(--px-scale));
+  height: calc(8px * var(--px-scale));
+}
+
+/* Auf schmalen Geräten bleibt das Fenster, der Rest geht — eine Wand voller
+   Dekoration auf 390 px nimmt dem Raum genau die Fläche, die die Schreibtische
+   brauchen. Und der Raster wird gröber statt feiner: bei einer Spalte steht
+   sonst ein 220 px breiter Schreibtisch in einer 350 px breiten Kachel.
+   30rem, nicht 32: darüber passen zwei 15rem-Spalten nebeneinander, und ein
+   Faktor, der breiter zeichnet als seine Spalte, müsste beschnitten werden. */
+@media (width <= 30rem) {
+  .px-buero {
+    --px-scale: 6;
+  }
+
+  .px-uhr,
+  .px-pflanze {
+    display: none;
+  }
+}
+
+/* ----------------------------------------------------------------- Boden */
+
+.px-boden {
+  padding: calc(3px * var(--px-scale)) 0.75rem 1rem;
+  background-color: var(--px-bodenfarbe);
+  background-image:
+    repeating-linear-gradient(0deg, rgb(0 0 0 / 13%) 0 2px, transparent 2px 26px),
+    repeating-linear-gradient(90deg, rgb(0 0 0 / 7%) 0 2px, transparent 2px 104px);
+}
+
+/* `align-items: start` ist keine Kosmetik: die Schreibtische stehen dann alle
+   auf **einer** Linie, egal wie viele Zeilen ein Aufgabentitel unter ihnen
+   braucht. Bodenbündig ausgerichtet schwebt der Tisch mit dem längsten Titel
+   höher als seine Nachbarn, und der Raum zerfällt in Kacheln. */
+.px-plaetze {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+  gap: 0.75rem 0.5rem;
+  align-items: start;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* -------------------------------------------------------------- Ein Platz */
+
+.px-platz {
+  display: grid;
+  justify-items: center;
+  gap: 0.3rem;
+  width: 100%;
+  padding: 0.35rem 0.35rem 0.5rem;
+  border: 3px solid transparent;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.px-platz:hover {
+  background: rgb(255 255 255 / 30%);
+}
+
+.px-platz:focus-visible {
+  outline: 3px solid var(--vs-fokus, var(--px-ink));
+  outline-offset: 2px;
+}
+
+.px-platz[aria-pressed="true"] {
+  border-color: var(--px-ink);
+  background: rgb(255 255 255 / 45%);
+}
+
+/* `height: auto` mit `aspect-ratio`, nicht die zweite `calc()`-Zeile: sonst
+   verzerrt `max-width: 100%` die Szene, sobald eine Spalte schmaler ist als
+   der gewählte Faktor — Höhe fest, Breite beschnitten. */
+.px-szene {
+  display: block;
+  width: calc(44px * var(--px-scale));
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: 44 / 28;
+}
+
+/* Das Namensschild: der Text steht nie auf dem Dielenboden, sondern auf einer
+   eigenen Fläche — sonst kämpft jede Zeile gegen die Maserung. */
+.px-schild {
+  width: 100%;
+  padding: 0.3rem 0.45rem;
+  border: 2px solid var(--vs-rahmen, var(--px-ink));
+  background: var(--vs-karte, var(--px-schild));
+  box-shadow: 3px 3px 0 rgb(42 35 49 / 25%);
+  line-height: 1.35;
+}
+
+.px-name {
+  display: block;
+  font-size: 1rem;
+}
+
+.px-abteilung,
+.px-seit {
+  display: block;
+  color: var(--vs-text-leise, #5d5566);
+  font-size: 0.75rem;
+}
+
+.px-zeile {
+  display: block;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------------- Feierabend-Zeile */
+
+.px-leer {
+  max-width: 34rem;
+  margin: calc(4px * var(--px-scale)) auto 0;
+  padding: 0.5rem 0.7rem;
+  border: 2px solid var(--vs-rahmen, var(--px-ink));
+  background: var(--vs-karte, var(--px-schild));
+  box-shadow: 3px 3px 0 rgb(42 35 49 / 25%);
+  text-align: center;
+}
+
+.px-leer p {
+  margin: 0.2rem 0;
+}
+
+.px-moebel {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+}

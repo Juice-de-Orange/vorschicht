@@ -1,0 +1,10 @@
+/*
+ * Der einzige Einstieg in die Gestaltung.
+ *
+ * `main.tsx` lädt diese Datei und sonst keine — so entscheidet die Reihenfolge
+ * hier über die Kaskade, statt von der Importreihenfolge einzelner Komponenten
+ * abzuhängen. Grundlage zuerst (Marken und Grundelemente), Bausteine danach,
+ * damit ein Baustein ein Grundelement überschreiben kann und nicht umgekehrt.
+ */
+@import "./basis.css";
+@import "./bausteine.css";

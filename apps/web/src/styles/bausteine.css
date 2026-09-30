@@ -1,0 +1,1322 @@
+/*
+ * Vorschicht — Bausteine.
+ * =============================================================================
+ *
+ * Die wiederkehrenden Teile: Hülle, Navigation, Karte, Kennzahl, Statusblase,
+ * Warnstreifen, Knopf. Zwei Regeln, die diese Datei durchhält:
+ *
+ * 1. **Eine Klasse je Element, Varianten über `data-`-Attribute.** Also
+ *    `class="blase" data-zustand="stopp"` statt `class="blase blase--stopp"`.
+ *    Klassenketten in den Komponenten waren ausdrücklich ausgeschlossen, und
+ *    `data-`-Attribute sind hier ohnehin das Hausidiom — die Oberfläche ist
+ *    voll von `data-testid`.
+ *
+ * 2. **Kein `position: sticky`, kein `position: fixed`.** Das ist eine
+ *    Entscheidung gegen eine bequeme Kopfleiste und für 65 Browserfälle:
+ *    Playwright rollt ein Element vor dem Klick ins Bild, und unter einer
+ *    klebenden Leiste landet es dann verdeckt — der Klick schlägt mit
+ *    „intercepts pointer events" fehl. Eine Gestaltung, die einen Nachweis
+ *    kaputt macht, ist keine.
+ */
+
+/* -------------------------------------------------------------------------- */
+/* Hülle                                                                       */
+/* -------------------------------------------------------------------------- */
+
+.rahmen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.kopf {
+  /*
+   * Dunkles Holz: die Schreibtischkante, an der die Papiere anliegen.
+   *
+   * **Einfarbig, ohne Maserung.** Hier lag eine `repeating-linear-gradient`
+   * über dem Holzton, und sie ist der zweite Grund, aus dem axe den Kontrast
+   * der Kopfleiste nicht entscheiden konnte — sichtbar erst, nachdem der
+   * Textschatten der Wortmarke weg war, weil axe den Schatten zuerst meldet
+   * und danach abbricht. Gemessen am 18.8.2026, dieselbe Seite, nur diese eine
+   * Änderung dazwischen:
+   *
+   *   vorher   „contrast could not be determined because it uses complex text shadows"
+   *   danach   „background color could not be determined due to a background gradient"
+   *
+   * Zwei Ursachen hintereinander, eine sichtbare Meldung — der Grund, warum
+   * hier gemessen und nicht geschlossen wurde.
+   *
+   * Die Maserung kehrt **nicht** als Pseudoelement hinter dem Text zurück.
+   * Das würde axe wieder entscheiden lassen (ein `::before` steht nicht in der
+   * Elternkette), und die gerechnete Zahl wäre dann eine über `--holz`, während
+   * die Pixel darunter teils dunkler sind. Für helle Schrift auf dunklem Grund
+   * wäre das sogar der ungünstigste Fall und damit sicher — aber es wäre eine
+   * Zahl über etwas anderes als das, was gezeichnet wird, und die nächste
+   * Änderung an der Streifenfarbe hebt die Begründung stillschweigend auf.
+   * Ein Nachweis, der von einer Farbe abhängt, die niemand mehr nachrechnet,
+   * ist keiner.
+   *
+   * Der Pixel-Charakter der Leiste steckt weiter in der harten 4-px-Kante
+   * unten, in den aufsitzenden Reitern und in der Bitmap-Schrift — nach
+   * `docs/DESIGN.md` „in Fläche, Rahmen, Farbe und Balken".
+   * Kontrast Blatt/Holz: 10.28:1 (basis.css), jetzt gerechnet statt vermutet.
+   */
+  background: var(--holz);
+  border-bottom: 4px solid var(--tinte);
+  padding: var(--luft-4) var(--luft-4) 0;
+  /* Heller Ring, weil der blaue gegen dunkles Holz zu schwach stünde. */
+  --fokus: var(--flaeche-blatt);
+}
+
+.kopf-zeile {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--luft-2) var(--luft-4);
+  max-width: 72rem;
+  margin: 0 auto;
+  padding-bottom: var(--luft-3);
+}
+
+.marke {
+  margin: 0;
+  color: var(--flaeche-blatt);
+  font-size: var(--grad-xl);
+  /*
+   * **Kein `text-shadow`.** Hier stand ein harter Versatz nach unten rechts,
+   * der der Wortmarke die Kante eines gesetzten Bitmap-Titels gab. Gemessen am
+   * 18.8.2026 mit axe 4.13 über die abgemeldete Seite:
+   *
+   *   color-contrast (1 Knoten)  h1
+   *     „Element's contrast could not be determined because it uses complex
+   *      text shadows"
+   *
+   * Also **unentschieden** statt bestanden — und damit ist §22s Gate-Satz
+   * „zero violations" auf allen elf Seiten eine Aussage über null *entschiedene*
+   * Befunde. Ein Kontrast, den niemand gerechnet hat, ist kein bestandener
+   * Kontrast (A25s Unterscheidung, eine Abteilung weiter).
+   *
+   * des Betreibers Entscheidung vom 17.8.2026 (Frage 9): so umbauen, dass axe entscheiden
+   * kann. Die Wortmarke wird dadurch flacher; der Pixel-Charakter steckt nach
+   * `docs/DESIGN.md` ohnehin „in Fläche, Rahmen, Farbe und Balken,
+   * nicht im Fließtext", und die Kante trägt hier weiterhin die Schrift selbst
+   * (Silkscreen 700) und die harte Unterkante des Kopfes.
+   *
+   * Die Kante kommt nicht als Pseudoelement zurück: `::before { content:
+   * "Vorschicht" }` wäre derselbe Text ein zweites Mal im Zugänglichkeitsbaum,
+   * und ein Vorleser sagte die Wortmarke doppelt. Das ist der teurere Fehler.
+   */
+  letter-spacing: 0.02em;
+}
+
+.marke-zusatz {
+  font-family: var(--schrift-anzeige);
+  font-size: var(--grad-xs);
+  color: var(--flaeche-tisch);
+}
+
+.navigation {
+  max-width: 72rem;
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--luft-1);
+  /* Die Reiter sitzen auf der Kante auf; die Trennlinie zieht der Kopf. */
+  padding-bottom: 0;
+}
+
+/*
+ * Reiter, keine Knöpfe. Angesprochen über das vorhandene `data-testid` des
+ * Behälters, damit die Kennungen unverändert bleiben — sie tragen 65
+ * Browserfälle.
+ */
+.navigation button {
+  font-family: var(--schrift-anzeige);
+  font-size: var(--grad-xs);
+  letter-spacing: 0.04em;
+  color: var(--tinte);
+  background: var(--flaeche-tisch);
+  border: var(--linie-stark) solid var(--tinte);
+  border-bottom: 0;
+  border-radius: 0;
+  padding: var(--luft-2) var(--luft-3);
+  margin: 0;
+  cursor: pointer;
+  /* Auf die 4-px-Unterkante des Kopfes gesetzt, damit der Reiter „einrastet". */
+  position: relative;
+  top: 4px;
+}
+
+.navigation button:hover {
+  background: var(--flaeche-blatt);
+}
+
+/*
+ * Der offene Reiter.
+ *
+ * Drei Merkmale, und nur eines davon ist Farbe: er liegt auf Papierton statt
+ * auf Tischton, er ist fett gesetzt, und er trägt oben eine Marke. Ein Reiter,
+ * den nur ein Farbton auszeichnet, ist für die Hälfte der Rot-Grün-Sehschwächen
+ * kein Reiter — und `aria-current` sagt es zusätzlich in Worten, weshalb die
+ * Auszeichnung an genau diesem Attribut hängt und nicht an einer eigenen Klasse.
+ */
+.navigation button[aria-current] {
+  background: var(--flaeche-blatt);
+  font-weight: 700;
+  box-shadow: inset 0 4px 0 var(--bernstein);
+  padding-top: calc(var(--luft-2) + var(--luft-1));
+}
+
+.inhalt {
+  flex: 1;
+  width: 100%;
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: var(--luft-6) var(--luft-4) var(--luft-7);
+}
+
+.fusszeile {
+  border-top: var(--linie-stark) dashed var(--linie-leise);
+  margin-top: var(--luft-7);
+  padding-top: var(--luft-4);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Karte — der Aktendeckel                                                     */
+/* -------------------------------------------------------------------------- */
+
+.karte {
+  background: var(--flaeche-blatt);
+  border: var(--linie-stark) solid var(--linie);
+  border-radius: 0;
+  box-shadow: var(--schatten);
+  padding: var(--luft-4);
+  margin-bottom: var(--luft-5);
+}
+
+.karte > :last-child {
+  margin-bottom: 0;
+}
+
+.karte > h2:first-child,
+.karte > h3:first-child {
+  margin-top: 0;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Statusblase                                                                 */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Farbe ist hier nie das einzige Merkmal: den Zustand trägt sein deutscher
+ * Name als Text, die Blockmarke links gibt ihm zusätzlich eine Form. Das ist
+ * die Bedingung, unter der das a11y-Gate der Phase 7 überhaupt erfüllbar ist.
+ */
+.blase {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--luft-1) var(--luft-2);
+  background: var(--flaeche-blatt);
+  border: var(--linie-stark) solid var(--linie);
+  border-left-width: 12px;
+  border-left-color: var(--tinte-leise);
+  box-shadow: var(--schatten-klein);
+  padding: var(--luft-3) var(--luft-4);
+  margin: 0 0 var(--luft-4);
+  font-size: var(--grad-m);
+}
+
+.blase strong {
+  font-family: var(--schrift-anzeige);
+  font-size: var(--grad-s);
+  letter-spacing: 0.02em;
+}
+
+.blase[data-zustand="normal"] {
+  border-left-color: var(--gruen);
+}
+
+.blase[data-zustand="normal"] strong {
+  color: var(--gruen);
+}
+
+.blase[data-zustand="wrap_up"] {
+  border-left-color: var(--bernstein);
+  background: #fbf1dc;
+}
+
+.blase[data-zustand="wrap_up"] strong {
+  color: var(--bernstein);
+}
+
+.blase[data-zustand="hard_stop"] {
+  border-left-color: var(--rost);
+  background: #fbeae6;
+  /* Ein Halt ist der einzige Zustand, der aus der Seite heraustreten darf. */
+  border-width: 3px;
+  border-left-width: 12px;
+}
+
+.blase[data-zustand="hard_stop"] strong {
+  color: var(--rost);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Warnstreifen                                                                */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Reservierter Platz für einen Streifen, der erst nach dem ersten Anstrich
+ * kommt (siehe die Begründung in `Auth.tsx`). Die Höhe ist die eines
+ * einzeiligen Streifens: zwei Ränder, zweimal Innenabstand, eine Zeile — aus
+ * denselben Variablen gerechnet, die `.streifen` benutzt, damit eine Änderung
+ * dort nicht hier eine Zahl stehen lässt, die nicht mehr passt.
+ *
+ * `margin-bottom` trägt das Fach statt des Streifens, sonst wäre der Abstand
+ * unter einem leeren Fach weg und die Reservierung um genau diesen Betrag zu
+ * klein — der Sprung wäre kleiner statt weg.
+ */
+.streifenfach {
+  min-height: calc(2 * var(--linie-stark) + 2 * var(--luft-3) + 1lh);
+  margin-bottom: var(--luft-4);
+}
+
+.streifenfach > .streifen:last-child {
+  margin-bottom: 0;
+}
+
+.streifen {
+  /* Ein Streifen kann selbst die Liste sein (mehrere Ablehnungen auf einmal
+     kommen als `<ul role="alert">`); auf einem `<p>` bewirkt die Zeile nichts. */
+  list-style: none;
+  border: var(--linie-stark) solid var(--linie);
+  border-left-width: 12px;
+  box-shadow: var(--schatten-klein);
+  padding: var(--luft-3) var(--luft-4);
+  margin: 0 0 var(--luft-4);
+  background: var(--flaeche-blatt);
+}
+
+.streifen[data-ton="fehler"] {
+  border-left-color: var(--rost);
+  background: #fbeae6;
+}
+
+.streifen[data-ton="warnung"] {
+  border-left-color: var(--bernstein);
+  background: #fbf1dc;
+}
+
+.streifen[data-ton="hinweis"] {
+  border-left-color: var(--blau);
+}
+
+/*
+ * Ein Streifen kann einen ganzen Abschnitt umfassen (§17.1s „liegt, weil das
+ * Projekt nur lesbar ist"), also darf die Überschrift darin ihren Außenabstand
+ * nicht mitbringen — sonst klafft oben eine Lücke, die wie ein Fehler aussieht.
+ */
+.streifen > :first-child,
+.blase > :first-child {
+  margin-top: 0;
+}
+
+.streifen > :last-child,
+.blase > :last-child {
+  margin-bottom: 0;
+}
+
+/*
+ * Ein Streifen kann selbst die Liste sein: mehrere Ablehnungen auf einmal
+ * kommen als `<ul role="alert">` — der Server schickt sie einzeln, und sie
+ * einzeln zu zeigen ist der Grund, warum es eine Liste ist. Ohne diese Regel
+ * trüge sie Aufzählungspunkte auf einem Warnstreifen.
+ *
+ * Über den Elementnamen und nicht über eine zweite Klasse: eine Klassenkette
+ * im Markup war ausgeschlossen (Regel 1 im Kopf dieser Datei).
+ */
+.streifen > li {
+  margin-bottom: var(--luft-1);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Kennzahlen — die Budgetanzeige                                              */
+/* -------------------------------------------------------------------------- */
+
+.kennzahlen {
+  list-style: none;
+  margin: 0 0 var(--luft-4);
+  padding: 0;
+  display: grid;
+  /*
+   * `auto-fit` statt fester Spalten: auf 390 px steht eine Kennzahl je Zeile,
+   * auf dem Schreibtisch stehen drei nebeneinander — ohne Umbruchpunkt, den
+   * jemand pflegen müsste.
+   */
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: var(--luft-3);
+}
+
+.kennzahlen > li {
+  --balken: var(--gruen);
+
+  margin: 0;
+  background: var(--flaeche-vertieft);
+  border: var(--linie-stark) solid var(--linie);
+  box-shadow: var(--schatten-klein);
+  padding: var(--luft-3);
+  font-size: var(--grad-s);
+  color: var(--tinte-leise);
+}
+
+.kennzahlen > li strong {
+  display: block;
+  font-family: var(--schrift-text);
+  font-size: var(--grad-l);
+  color: var(--tinte);
+  line-height: 1.3;
+}
+
+/*
+ * Der Budgetbalken (§17.1).
+ *
+ * Rein dekorativ und ohne eigenes Markup: die Zeile setzt `--fuellung` als
+ * Inline-Variable, gezeichnet wird über `::after`. Damit trägt der Balken
+ * keinen Text, den ein Screenreader doppelt vorlesen könnte — die Zahl steht
+ * bereits daneben —, und keine Zusicherung im Browsertest sieht ihn.
+ *
+ * Gezeichnet wird nur, wenn die Zeile `data-balken` trägt, und das setzt sie
+ * ausschließlich für ein Fenster mit **echter Messung**. Ein nicht lesbares
+ * Fenster bekommt also keinen Balken — ein leerer oder halber Balken wäre eine
+ * beruhigende Aussage über eine Zahl, die es nicht gibt, und genau das verbietet
+ * §17.1. Das eigene Attribut statt eines `[style*=…]`-Treffers, weil hier eine
+ * Tatsache ausgedrückt wird und nicht die Schreibweise eines Attributs geraten.
+ *
+ * Gerastert in 5-%-Klötzchen statt als weicher Verlauf: das ist der
+ * Pixel-Charakter an der Stelle, an der die Schrift ihn nicht liefern darf.
+ */
+.kennzahlen > li[data-balken]::after {
+  content: "";
+  display: block;
+  margin-top: var(--luft-2);
+  height: 12px;
+  border: var(--linie-stark) solid var(--linie);
+  background-image:
+    linear-gradient(to right, var(--balken) 0 calc(var(--fuellung) * 1%), transparent 0),
+    repeating-linear-gradient(90deg, transparent 0 5px, var(--flaeche-blatt) 5px 7px);
+  background-color: var(--flaeche-blatt);
+}
+
+.kennzahlen > li[data-ton="warnung"] {
+  --balken: var(--bernstein);
+
+  background: #fbf1dc;
+}
+
+.kennzahlen > li[data-ton="stopp"] {
+  --balken: var(--rost);
+
+  background: #fbeae6;
+  border-width: 3px;
+}
+
+/*
+ * Kein Balken, sondern eine gestrichelte Kante: dieses Fenster hat **keine**
+ * Messung. Ein `--balken`-Ton stand hier zuerst und war unerreichbar — genau
+ * die Zeilen ohne Messung sind die ohne `data-balken`, also hätte die Regel nie
+ * gezeichnet und trotzdem so ausgesehen, als sei der Fall behandelt (§8.2s
+ * sechste Domäne). Jetzt behandelt sie ihn wirklich, und zwar so, dass „nicht
+ * lesbar" auf einen Blick nicht wie „in Ordnung" aussieht.
+ */
+.kennzahlen > li[data-ton="unbekannt"] {
+  background: var(--flaeche-blatt);
+  border-style: dashed;
+  box-shadow: none;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Knöpfe                                                                      */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Bewusst **nicht** als nacktes `button`-Element gestylt: `Buero.tsx` und die
+ * übrigen Seiten dieses Durchgangs gehören anderen Strängen, und ein globaler
+ * Knopfstil würde dort in Layouts eingreifen, die ich nicht gelesen habe. Was
+ * global gilt, steht in `basis.css`; hier steht, was ein Knopf ist, wenn er
+ * einer sein soll.
+ *
+ * Die eine Ausnahme ist die Fußzeile. Dort steht `Auth.tsx`, das zur Hülle
+ * gehört und in diesem Durchgang **nicht angefasst** wird — seine Knöpfe über
+ * den Behälter zu erreichen ist der einzige Weg, „Abmelden" und „Passkey
+ * registrieren" nicht als nackte Browserknöpfe unter einer gestalteten Seite
+ * stehen zu lassen, ohne eine fremde Datei zu ändern.
+ */
+.knopf,
+.fusszeile button {
+  display: inline-block;
+  font-family: var(--schrift-anzeige);
+  font-size: var(--grad-xs);
+  letter-spacing: 0.03em;
+  line-height: 1.5;
+  color: var(--tinte);
+  background: var(--flaeche-tisch);
+  border: var(--linie-stark) solid var(--linie);
+  border-radius: 0;
+  box-shadow: var(--schatten-klein);
+  padding: var(--luft-2) var(--luft-4);
+  cursor: pointer;
+  text-align: left;
+  transition: none;
+}
+
+.knopf:hover:not(:disabled),
+.fusszeile button:hover:not(:disabled) {
+  background: var(--flaeche-blatt);
+}
+
+/* Gedrückt: der Knopf fährt in seinen eigenen Schatten hinein. */
+.knopf:active:not(:disabled),
+.fusszeile button:active:not(:disabled) {
+  box-shadow: none;
+  transform: translate(2px, 2px);
+}
+
+.knopf:disabled,
+.fusszeile button:disabled {
+  color: var(--tinte-leise);
+  background: var(--flaeche-vertieft);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.knopf[data-ton="haupt"] {
+  background: var(--gruen);
+  color: var(--flaeche-blatt);
+  font-size: var(--grad-s);
+}
+
+.knopf[data-ton="haupt"]:hover:not(:disabled) {
+  background: var(--holz);
+}
+
+.knopf[data-ton="ruf"] {
+  background: var(--bernstein);
+  color: var(--flaeche-blatt);
+  font-size: var(--grad-s);
+}
+
+.knopf[data-ton="ruf"]:hover:not(:disabled) {
+  background: var(--rost);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Listen                                                                      */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Zeilenlisten ohne Aufzählungspunkt. Wichtig: der Punkt wird über
+ * `list-style` entfernt und **nicht** über eingefügten Text ersetzt —
+ * `::before`-Inhalt landet bei manchen Vorlesern in der Ausgabe, und mehrere
+ * Browserfälle prüfen den Text einer Zeile auf Gleichheit.
+ */
+.liste {
+  list-style: none;
+  margin: 0 0 var(--luft-3);
+  padding: 0;
+}
+
+.liste > li {
+  padding: var(--luft-2) 0;
+  border-bottom: 1px solid var(--linie-leise);
+  font-size: var(--grad-s);
+}
+
+.liste > li:last-child {
+  border-bottom: 0;
+}
+
+/*
+ * Der Verlauf ist eine Maschinenausgabe und wird als solche gesetzt.
+ *
+ * Eigenständig statt als Zusatz zu `.liste`: eine Klassenkette im Markup war
+ * ausgeschlossen, also trägt diese Klasse ihren Listenaufbau selbst.
+ */
+.protokoll {
+  list-style: none;
+  margin: 0 0 var(--luft-3);
+  /*
+   * Ein langer Verlauf darf die Seite nicht endlos machen — er ist Beiwerk,
+   * nicht die Antwort auf „brennt etwas".
+   */
+  max-height: 22rem;
+  overflow-y: auto;
+  border: 1px solid var(--linie-leise);
+  background: var(--flaeche-vertieft);
+  padding: var(--luft-2) var(--luft-3);
+}
+
+.protokoll > li {
+  margin: 0;
+  padding: var(--luft-1) 0;
+  border-bottom: 1px solid var(--linie-leise);
+  font-family: var(--schrift-mono);
+  font-size: var(--grad-xs);
+  color: var(--tinte-leise);
+}
+
+.protokoll > li:last-child {
+  border-bottom: 0;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Kleinteile                                                                  */
+/* -------------------------------------------------------------------------- */
+
+.etikett {
+  font-family: var(--schrift-anzeige);
+  font-size: var(--grad-xs);
+  color: var(--holz);
+}
+
+.leise {
+  color: var(--tinte-leise);
+  font-size: var(--grad-s);
+}
+
+/* Die Verbindungsanzeige des Verlaufs: getrennt darf nicht beruhigend aussehen. */
+.puls {
+  font-family: var(--schrift-anzeige);
+  font-size: var(--grad-xs);
+  color: var(--gruen);
+}
+
+.puls[data-zustand="getrennt"] {
+  color: var(--rost);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Stapel — Karten in einer Liste                                              */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Eine Liste, deren Einträge selbst Karten sind: der Posteingang, die
+ * Quellenliste, die Dokumentenliste.
+ *
+ * Wichtig und der Grund für eine eigene Klasse statt einer Verschachtelung:
+ * mehrere Browserfälle zählen `> li` **direkt** unter dem Behälter mit dem
+ * `data-testid`. Zwischen Liste und Eintrag darf also nichts eingezogen
+ * werden — der Stapel gibt dem vorhandenen `li` Luft und sonst nichts.
+ */
+.stapel {
+  list-style: none;
+  margin: 0 0 var(--luft-4);
+  padding: 0;
+}
+
+.stapel > li {
+  margin: 0 0 var(--luft-4);
+}
+
+.stapel > li:last-child {
+  margin-bottom: 0;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Formularzeile                                                               */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Beschriftung über dem Feld, nicht daneben.
+ *
+ * Daneben ist auf dem Schreibtisch schöner und auf 390 px unbrauchbar: die
+ * Beschriftungen hier heißen „Abteilungen, denen dieses Dokument dient" und
+ * „Pfade, die als Datenbankmigration gelten", also bliebe für das Feld eine
+ * Spalte von zwei Zentimetern. Eine Anordnung, die nur auf einer Breite
+ * funktioniert, ist keine.
+ */
+.feld {
+  margin: 0 0 var(--luft-4);
+}
+
+.feld > label {
+  display: block;
+}
+
+.feld input,
+.feld select,
+.feld textarea {
+  display: block;
+  width: 100%;
+}
+
+/* Ein Eingabefeld über die volle Breite eines Schreibtischs liest sich als
+   Formular für einen Aufsatz, nicht für einen Suchbegriff. */
+.feld input,
+.feld select {
+  max-width: 32rem;
+}
+
+.feld textarea {
+  max-width: 48rem;
+}
+
+/* Der Hinweis unter dem Feld gehört zum Feld, nicht zum nächsten Absatz. */
+.feld > small {
+  display: block;
+  margin-top: var(--luft-1);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Werkzeugleiste — Filter über einer Liste                                    */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Die Filter sitzen in einer vertieften Rille über ihrer Liste, damit sichtbar
+ * ist, dass sie zu ihr gehören und nicht zum Inhalt darüber. Auf dem Handy
+ * bricht die Zeile um; die Felder behalten ihre Mindestbreite, statt auf
+ * Buchstabenbreite zusammengedrückt zu werden.
+ */
+.werkzeugleiste {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--luft-3) var(--luft-4);
+  background: var(--flaeche-vertieft);
+  border: 1px solid var(--linie-leise);
+  padding: var(--luft-3);
+  margin: 0 0 var(--luft-4);
+}
+
+.werkzeugleiste > * {
+  margin: 0;
+}
+
+.werkzeugleiste label {
+  display: block;
+}
+
+.werkzeugleiste input,
+.werkzeugleiste select {
+  min-width: 10rem;
+}
+
+/*
+ * Umschließt die Beschriftung ihr Feld (`<label>Projekt <select/></label>`,
+ * §17.4s Filter), rutscht das Feld unter den Text statt dahinter — sonst steht
+ * eine Anzeigeschrift-Beschriftung mitten in einer Reihe von Feldern und die
+ * Zeile hat keine Grundlinie mehr.
+ */
+.werkzeugleiste label > input,
+.werkzeugleiste label > select {
+  display: block;
+  margin-top: var(--luft-1);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Wahl — eine Stellung mit ihrer Erklärung                                    */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Eine Zeile aus Ankreuzfeld, Beschriftung und dem Satz, was sie bedeutet.
+ * A26s Pause, §8s Persona-Stufen, §11s Gate-Liste.
+ *
+ * Die Beschriftung trägt hier **Textschrift**, obwohl `basis.css` für `label`
+ * die Anzeigeschrift setzt. Zwei Gründe, und der zweite ist der harte: sie ist
+ * ganze Sätze lang („Harte Pause — laufende Sitzungen bekommen 60 Sekunden"),
+ * und auf §11s Gate-Liste trägt sie Befehle und Pfade. Die Anzeigeschrift
+ * bleibt den kurzen, statischen Etiketten vorbehalten.
+ *
+ * Die gewählte Stellung ist an drei Merkmalen erkennbar — Papierton statt
+ * Rille, breitere Kante, und der gefüllte Knopf selbst. Farbe ist keines
+ * davon.
+ */
+.wahl {
+  background: var(--flaeche-vertieft);
+  border-left: 4px solid var(--linie-leise);
+  padding: var(--luft-2) var(--luft-3);
+  margin: 0 0 var(--luft-2);
+}
+
+.wahl > label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--luft-2);
+  font-family: var(--schrift-text);
+  font-size: var(--grad-m);
+  color: var(--tinte);
+  margin-bottom: 0;
+  cursor: pointer;
+}
+
+.wahl[data-gewaehlt] {
+  background: var(--flaeche-blatt);
+  border-left-width: 8px;
+  border-left-color: var(--holz);
+}
+
+/* Der erklärende Satz rückt unter die Beschriftung, nicht unter den Knopf. */
+.wahl small,
+.wahl > p {
+  display: block;
+  margin: var(--luft-1) 0 0 calc(18px + var(--luft-2));
+}
+
+/* -------------------------------------------------------------------------- */
+/* Optionen — §15s Entscheidungskarte                                          */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Die zwei bis vier vorbereiteten Wege, jeder mit Vor- und Nachteilen, und
+ * genau einer davon markiert.
+ *
+ * Die Empfehlung muss man **sehen, ohne zu lesen** — sie liegt auf warmem
+ * Papier, trägt eine doppelt so breite Kante und einen Schatten, während die
+ * übrigen flach in der Rille liegen. Der Text „Empfehlung der Abteilung" bleibt
+ * unverändert und genau einmal vorhanden: ein Browserfall zählt ihn, und eine
+ * zweite eingefügte Textmarke wäre nicht Gestaltung, sondern ein zweiter
+ * Empfehlungsträger.
+ */
+.optionen {
+  list-style: none;
+  margin: 0 0 var(--luft-4);
+  padding: 0;
+}
+
+.optionen > li {
+  background: var(--flaeche-vertieft);
+  border: var(--linie-stark) solid var(--linie);
+  border-left-width: 8px;
+  border-left-color: var(--linie-leise);
+  padding: var(--luft-3) var(--luft-4);
+  margin: 0 0 var(--luft-3);
+}
+
+.optionen > li[data-empfohlen] {
+  background: #fbf1dc;
+  border-left-width: 16px;
+  border-left-color: var(--bernstein);
+  box-shadow: var(--schatten-klein);
+}
+
+/* Die Beschriftung der Option ist der Titel und damit Inhalt, nicht Etikett. */
+.optionen > li > label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--luft-2);
+  font-family: var(--schrift-text);
+  font-size: var(--grad-m);
+  font-weight: 700;
+  color: var(--tinte);
+  margin-bottom: var(--luft-2);
+  cursor: pointer;
+}
+
+.empfehlung {
+  color: var(--bernstein);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Plakette — ein Zustand als Marke                                            */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Vertrauensstufe eines Messwerts, Zustand einer Quelle, Urteil eines
+ * Gate-Schritts.
+ *
+ * **Textschrift, nicht Anzeigeschrift**, und das ist keine Nachlässigkeit: eine
+ * Plakette trägt hier Dinge wie „L5" und „P0", also Ziffern, und die gemessene
+ * Regel im Kopf von `basis.css` verbietet der Anzeigeschrift jede Zahl. Den
+ * Pixelcharakter trägt der harte 2-px-Rahmen ohne Rundung.
+ *
+ * Farbe ist nirgends das einzige Merkmal — jede Plakette trägt ihren deutschen
+ * Namen als Text, und die beiden Fälle, bei denen eine Verwechslung teuer
+ * wäre, unterscheiden sich zusätzlich in der **Strichart**: eine geschätzte
+ * oder fehlende Messung bekommt einen gestrichelten Rahmen, eine gemessene
+ * einen durchgezogenen und gefüllten. Das ist §17.8s tragende Unterscheidung
+ * (A64/A73) und sie darf nicht an einem Farbton hängen.
+ */
+.plakette {
+  display: inline-block;
+  font-family: var(--schrift-text);
+  font-size: var(--grad-xs);
+  font-weight: 700;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: var(--tinte);
+  background: var(--flaeche-blatt);
+  border: var(--linie-stark) solid var(--tinte-leise);
+  padding: 0 var(--luft-2);
+}
+
+.plakette[data-ton="ok"] {
+  color: var(--gruen);
+  border-color: var(--gruen);
+}
+
+.plakette[data-ton="warnung"] {
+  color: var(--bernstein);
+  border-color: var(--bernstein);
+}
+
+.plakette[data-ton="stopp"] {
+  color: var(--rost);
+  border-color: var(--rost);
+  border-width: 3px;
+}
+
+.plakette[data-ton="info"] {
+  color: var(--blau);
+  border-color: var(--blau);
+}
+
+/* Gemessen: gefüllt und durchgezogen — die einzige Plakette, die satt steht. */
+.plakette[data-vertrauen="offiziell"] {
+  color: var(--flaeche-blatt);
+  background: var(--gruen);
+  border-color: var(--gruen);
+}
+
+/* Geschätzt und blind: gestrichelt. Eine Schätzung, die aussieht wie eine
+   Messung, ist der eine Fehler, den §17.8 nicht machen darf. */
+.plakette[data-vertrauen="geschaetzt"],
+.plakette[data-vertrauen="blind"] {
+  border-style: dashed;
+}
+
+.plakette[data-vertrauen="geschaetzt"] {
+  color: var(--bernstein);
+  border-color: var(--bernstein);
+}
+
+.plakette[data-vertrauen="strittig"] {
+  color: var(--rost);
+  border-color: var(--rost);
+}
+
+.plakette[data-vertrauen="blind"] {
+  color: var(--tinte-leise);
+  border-color: var(--tinte-leise);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Ablegezone — §13s Ziehen und Fallenlassen                                   */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Eine Fläche muss aussehen wie eine Fläche, sonst zieht niemand etwas darauf.
+ * Gestrichelt, weil sie leer ist und leer sein soll; beim Überfahren rastet die
+ * Kante auf durchgezogenes Holz und der Untergrund wird warm — der Zustand ist
+ * also an Strichart **und** Fläche erkennbar, nicht nur an einem Farbton.
+ *
+ * Der Satz darin wechselt ohnehin mit („Loslassen zum Übernehmen"), weil ein
+ * Zustand, den nur die Gestaltung trägt, für einen Vorleser keiner ist.
+ */
+.ablegezone {
+  background: var(--flaeche-vertieft);
+  border: var(--linie-stark) dashed var(--linie-leise);
+  padding: var(--luft-4);
+  margin: 0 0 var(--luft-3);
+  text-align: center;
+}
+
+.ablegezone > p {
+  margin-bottom: var(--luft-2);
+}
+
+.ablegezone[data-ueber] {
+  background: #fbf1dc;
+  border-style: solid;
+  border-color: var(--holz);
+}
+
+/*
+ * Der Auswahlknopf des Browsers.
+ *
+ * `::file-selector-button` ist die einzige Fläche daran, die sich gestalten
+ * lässt; die Beschriftung daneben („No file chosen") gehört dem Browser und
+ * steht in **seiner** Sprache. Das ist der Grund, warum die Seite darunter
+ * ohnehin einen eigenen deutschen Satz führt („Noch keine Datei gewählt.") —
+ * er ist nicht doppelt gemoppelt, er ist der einzige, den §2 abdeckt.
+ *
+ * Bewusst **kein** verstecktes Feld hinter einem eigenen Knopf: das ist die
+ * übliche Lösung und sie kostet die Tastaturbedienung, wenn man sie falsch
+ * baut. Ein echtes Feld, anders angemalt, kostet nichts.
+ */
+.ablegezone input[type="file"] {
+  font-family: var(--schrift-text);
+  font-size: var(--grad-s);
+  border: 0;
+  background: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+.ablegezone input[type="file"]::file-selector-button {
+  font-family: var(--schrift-anzeige);
+  font-size: var(--grad-xs);
+  letter-spacing: 0.03em;
+  color: var(--tinte);
+  background: var(--flaeche-tisch);
+  border: var(--linie-stark) solid var(--linie);
+  border-radius: 0;
+  box-shadow: var(--schatten-klein);
+  padding: var(--luft-2) var(--luft-3);
+  margin-right: var(--luft-3);
+  cursor: pointer;
+}
+
+.ablegezone input[type="file"]::file-selector-button:hover {
+  background: var(--flaeche-blatt);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Lesbarkeit — §13s drei Zustände einer abgelegten Datei                      */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * „durchsuchbar", „gelesen, aber ohne Text" und „noch nicht ausgelesen" sind
+ * drei verschiedene Auskünfte, und die mittlere und die letzte sind die, die
+ * ein Mensch braucht: eine Datei, die im Tresor liegt und auf keine Suche
+ * passen kann, ist unauffindbar — genau der Ausfall, gegen den §13 die Angabe
+ * überhaupt eingebaut hat. Drei gleich aussehende Zeilen hätten das wieder
+ * zugedeckt.
+ *
+ * Die Auszeichnung sitzt **am Absatz** und fügt keinen Text ein. Das ist keine
+ * Vorsicht ohne Grund: mehrere Browserfälle lesen diese Zeile als
+ * zusammenhängenden Text („Abgelegt · durchsuchbar ("), und eine eingeschobene
+ * Marke wäre ein zweiter Textknoten in der Mitte davon.
+ *
+ * Unterschieden wird über Kante **und** Strichart, nicht über Farbe allein —
+ * und der deutsche Satz steht ohnehin daneben.
+ */
+.lesbarkeit {
+  /* Trägt einmal ein `<p>` und einmal ein `<span>` — die Zeile steht in beiden
+     Fällen für sich, sonst rutscht sie hinter die Dateiangaben davor. */
+  display: block;
+  background: var(--flaeche-vertieft);
+  border-left: 8px solid var(--linie-leise);
+  padding: var(--luft-1) var(--luft-3);
+  margin: var(--luft-2) 0;
+  font-size: var(--grad-s);
+}
+
+/* Gefunden werden kann sie: durchgezogen. */
+.lesbarkeit[data-lesbarkeit="lesbar"] {
+  border-left-color: var(--gruen);
+}
+
+/* Gelesen, aber es stand nichts drin. */
+.lesbarkeit[data-lesbarkeit="leer"] {
+  border-left-color: var(--bernstein);
+}
+
+/* Gar nicht gelesen — die Datei liegt da und ist über die Suche unerreichbar. */
+.lesbarkeit[data-lesbarkeit="ausstehend"] {
+  background: #fbf1dc;
+  border-left-style: dashed;
+  border-left-color: var(--bernstein);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Tafel — ein Diagramm auf Papier                                             */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * §17.8s Verlaufskurve. Die Linie zeichnet mit `currentColor`, also entscheidet
+ * die Textfarbe hier über die Kurve — deshalb steht sie auf der Tafel und nicht
+ * am `polyline`, wo sie in der Komponente stünde statt im System.
+ */
+.tafel {
+  display: block;
+  max-width: 100%;
+  color: var(--blau);
+  background: var(--flaeche-blatt);
+  border: var(--linie-stark) solid var(--linie);
+  box-shadow: var(--schatten-klein);
+  padding: var(--luft-2);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Tabellenfeld                                                                */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Eine Tabelle mit sechs Spalten rollt in ihrem **eigenen** Feld, nicht in der
+ * Seite — dieselbe Entscheidung wie beim `<pre>` in `basis.css`, aus demselben
+ * Grund und mit einem anderen Auslöser.
+ *
+ * Der Auslöser war ein Bildschirmfoto: §12s Release-Historie zeigte auf 390 px
+ * sechs Spalten in je zwei Zentimetern, mit senkrecht gebrochenen
+ * Überschriften. Die Seite lief dabei **nicht** waagrecht über, die Prüfung im
+ * Bildschirmfoto-Skript war also grün — sie misst Überlauf, nicht Lesbarkeit.
+ * „Gut leserlich" ist die zweite Hälfte von des Betreibers Auftrag und die, die kein
+ * Messwert erwischt.
+ *
+ * `min-width` erzwingt das Rollen, statt es zu erlauben: ohne sie drückt der
+ * Tabellenumbruch die Spalten weiter zusammen, und das Feld hätte nie etwas zu
+ * rollen.
+ *
+ * Die Zahl ist gemessen und nicht geschätzt: die breiteste Tabelle hat sechs
+ * Spalten, und eine Kopfzelle in der Anzeigeschrift („KAPPEN", „AUSGANG")
+ * braucht mit Innenabstand rund 105 px, sonst bricht das Wort mitten entzwei.
+ * 40rem sind 640 px, also knapp 107 px je Spalte. Der erste Anlauf stand auf
+ * 34rem und rollte zwar korrekt, zeigte aber „AUSGA / NG" — die Prüfung auf
+ * Überlauf war grün und die Lesbarkeit trotzdem hin.
+ */
+.tabellenfeld {
+  overflow-x: auto;
+  margin: 0 0 var(--luft-4);
+  border: 1px solid var(--linie-leise);
+}
+
+.tabellenfeld > table {
+  min-width: 40rem;
+  margin-bottom: 0;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Zeitstrahl und Sitzungsprotokoll (§17.4)                                    */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Der Zeitstrahl einer Aufgabe. Die Kante links ist die Zeitachse; jeder
+ * Eintrag hängt mit einer kurzen Sprosse daran, damit die Reihenfolge sichtbar
+ * ist, ohne dass eine Nummer mitgezählt werden müsste.
+ */
+.zeitstrahl {
+  list-style: none;
+  margin: 0 0 var(--luft-4);
+  padding: 0 0 0 var(--luft-4);
+  border-left: var(--linie-stark) solid var(--linie-leise);
+}
+
+.zeitstrahl > li {
+  position: relative;
+  margin: 0 0 var(--luft-3);
+  padding-bottom: var(--luft-3);
+  border-bottom: 1px solid var(--linie-leise);
+}
+
+.zeitstrahl > li:last-child {
+  border-bottom: 0;
+  margin-bottom: 0;
+}
+
+/* Die Sprosse. Rein dekorativ und ohne Text — sie darf bei keinem Vorleser
+   auftauchen und in keiner Zusicherung über den Text einer Zeile landen. */
+.zeitstrahl > li::before {
+  content: "";
+  position: absolute;
+  left: calc(-1 * var(--luft-4) - 2px);
+  top: 10px;
+  width: var(--luft-3);
+  height: var(--linie-stark);
+  background: var(--linie-leise);
+}
+
+/*
+ * Das Sitzungsprotokoll.
+ *
+ * Jede Zeile eine Karteikarte, damit der fremde Text sichtbar in seinem eigenen
+ * Kasten liegt und nicht in die Seite ausläuft. Die eigentliche Absicherung
+ * gegen lange Zeilen steckt im `<pre>` darin (`basis.css`): es rollt selbst.
+ */
+.transkript {
+  list-style: none;
+  margin: 0 0 var(--luft-4);
+  padding: 0;
+}
+
+.transkript > li {
+  background: var(--flaeche-blatt);
+  border: 1px solid var(--linie-leise);
+  border-left: 8px solid var(--linie-leise);
+  padding: var(--luft-2) var(--luft-3);
+  margin: 0 0 var(--luft-2);
+}
+
+/*
+ * Die angesprungene Zeile (§17.4s Klickpfad endet hier).
+ *
+ * Drei Merkmale, damit sie nicht an einem Farbton hängt: warmes Papier, eine
+ * dreimal so breite Kante und ein Schatten, der sie aus der Liste heraushebt.
+ */
+.transkript > li[data-fokus] {
+  background: #fbf1dc;
+  border-color: var(--bernstein);
+  border-left-width: 24px;
+  box-shadow: var(--schatten);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Kleinteile, zweiter Satz                                                    */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Nur für Vorleser. Für eine Kopfzelle, die eine Spalte mit Knöpfen überschreibt
+ * — sichtbar wäre sie Beiwerk, weggelassen ist sie eine leere Kopfzelle, und
+ * eine Tabelle mit leerer Kopfzelle ist ein a11y-Befund.
+ *
+ * `clip-path` statt `display: none` oder `visibility: hidden`: die beiden
+ * nehmen den Text auch dem Vorleser weg, was das Gegenteil des Zwecks wäre.
+ *
+ * **Ausdrücklich ohne `position: absolute`**, obwohl das die verbreitete Form
+ * ist. Absolut positioniert sucht sich das Element den nächsten positionierten
+ * Vorfahren; findet es keinen, ist sein umgebender Block das Dokument — und
+ * dann steht es an seiner statischen Stelle **ausserhalb** jedes Rollfelds und
+ * zieht die ganze Seite waagrecht auf. Genau das ist passiert: in der
+ * Kopfzeile der Sitzungstabelle, die seit dem Tabellenfeld 544 px breit ist,
+ * hing dieses eine Pixel bei x = 453 und machte aus 390 px Seitenbreite 571.
+ * Gefunden hat es die Überlaufprüfung des Bildschirmfoto-Skripts, nicht das
+ * Auge — sichtbar ist an einem 1-px-Element nichts.
+ *
+ * Im Fluss belegt es ein Pixel und kann per Definition nichts aufziehen, was
+ * nicht ohnehin passt.
+ */
+.nur-vorleser {
+  display: inline-block;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Ein Etikett kann eine Richtung tragen: §15s Dafür und Dagegen. */
+.etikett[data-ton="gut"] {
+  color: var(--gruen);
+}
+
+.etikett[data-ton="schlecht"] {
+  color: var(--rost);
+}
+
+/*
+ * Ein leerer Zustand ist eine Antwort und keine Panne — er steht auf Papier in
+ * einer gestrichelten Kante, damit „hier ist nichts" nicht wie „hier fehlt
+ * etwas" aussieht.
+ */
+.leerstand {
+  border: var(--linie-stark) dashed var(--linie-leise);
+  background: var(--flaeche-blatt);
+  color: var(--tinte-leise);
+  padding: var(--luft-4);
+  margin: 0 0 var(--luft-4);
+}
+
+/*
+ * Eine Reihe von Knöpfen. Ohne das kleben zwei `.knopf` in einem `<p>`
+ * aneinander, sobald der Zwischenraum aus dem Markup ein Zeilenumbruch wird.
+ */
+.knopfreihe {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--luft-2);
+  margin: 0 0 var(--luft-4);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Kennzahl mit Vertrauensangabe (§17.8)                                       */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Steht **hier unten** und nicht oben bei den Kennzahlen, und das ist kein
+ * Ordnungsgeschmack: beide Regeln sind spezifischer als `.feld > small`,
+ * `.wahl small` und `.plakette`. Weiter oben stünde ein schärferer Selektor vor
+ * seinen schwächeren Geschwistern, und welche Regel dann greift, hinge von der
+ * Reihenfolge statt von der Absicht ab (`noDescendingSpecificity`).
+ *
+ * §17.8 setzt in dieselbe Kachel den Satz, was die Zahl wert ist (A73). Er
+ * gehört **unter** die Zahl: daneben wird aus der Begründung ein Nachsatz, den
+ * man überliest, und genau das darf sie nicht sein.
+ */
+.kennzahlen > li small {
+  display: block;
+  margin-top: var(--luft-1);
+}
+
+.kennzahlen > li .plakette {
+  /* Trennt die Marke von der Zahl darunter, ohne eine eigene Zeile zu kosten. */
+  margin-bottom: var(--luft-1);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Handy                                                                       */
+/* -------------------------------------------------------------------------- */
+
+@media (max-width: 40rem) {
+  .kopf {
+    padding: var(--luft-3) var(--luft-3) 0;
+  }
+
+  .inhalt {
+    padding: var(--luft-4) var(--luft-3) var(--luft-6);
+  }
+
+  .marke {
+    font-size: var(--grad-l);
+  }
+
+  .karte {
+    padding: var(--luft-3);
+  }
+
+  /*
+   * Auf schmalen Geräten zählt jede Zeile: die Reiter rücken zusammen, bleiben
+   * aber bei mindestens 44 px Höhe, damit sie mit dem Daumen zu treffen sind.
+   */
+  .navigation button {
+    padding: var(--luft-2);
+    min-height: 44px;
+  }
+
+  /*
+   * Die Filterleiste wird auf schmalen Geräten eine Spalte. Nebeneinander
+   * blieben je zwei Zentimeter für ein Auswahlfeld, das „alle Projekte" tragen
+   * soll.
+   */
+  .werkzeugleiste {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .werkzeugleiste input,
+  .werkzeugleiste select {
+    width: 100%;
+  }
+
+  .optionen > li {
+    padding: var(--luft-3);
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Wochenbericht — der Bericht als Papier                                      */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * §16s Bericht ist für eine feste Breite gesetzt (die Klartextfassung der
+ * Mail), also bleibt er es hier auch: `pre` erhält Zeilenumbrüche und Spalten,
+ * die die Abschnitte lesbar machen. `--schrift-text` und nicht die
+ * Anzeigeschrift, weil dieser Block fast nur aus Zahlen besteht — die Regel aus
+ * `basis.css`, wonach Ziffern niemals in die Pixelschrift gehören.
+ *
+ * `overflow-x: auto` statt Umbruch: eine umgebrochene Tabellenzeile ist
+ * schlechter lesbar als eine, die man schiebt, und auf dem Telefon ist der
+ * Bericht ohnehin ein Nachschlagewerk und kein Fliesstext.
+ */
+.bericht-text {
+  margin: var(--luft-3) 0 0;
+  padding: var(--luft-4);
+  background: var(--flaeche-vertieft);
+  border: var(--linie-stark) solid var(--linie-leise);
+  font-family: var(--schrift-text);
+  font-size: var(--grad-s);
+  line-height: 1.5;
+  white-space: pre;
+  overflow-x: auto;
+}

@@ -1,0 +1,22 @@
+{
+  // The browser suites were in **no** tsconfig and no gate step, so nothing
+  // typechecked them. That was already a gap; with `posteingang.spec.ts` it
+  // became one worth closing, because that file is the evidence behind three
+  // Phase 4 exit gates — and a proof nobody checks is the shape §8.2's sixth
+  // domain hunts, one directory over from where it usually finds it.
+  //
+  // Its own project rather than a widening of `tsconfig.test.json`: these
+  // specs need the DOM library (`page.evaluate` callbacks run in a browser) and
+  // Playwright's types, and that config deliberately has neither.
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node"]
+  },
+  "include": ["**/*.ts", "../playwright.config.ts"]
+}

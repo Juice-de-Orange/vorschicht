@@ -1,0 +1,721 @@
+/*
+ * Vorschicht — Gestaltungsgrundlage: Pixel-Büro.
+ * =============================================================================
+ *
+ * des Betreibers Auftrag, wörtlich: „ich will dass alles einen verpixelten Office Style
+ * hat. gemütlich und gut leserlich."
+ *
+ * Die zweite Hälfte ist die schwierige. Pixelschriften sind gemütlich und bei
+ * Zahlenkolonnen schlecht lesbar, und diese Oberfläche besteht zu weiten Teilen
+ * aus Prozentwerten, Zeiten und Kennungen. Deshalb steckt der Pixel-Charakter
+ * hier in **Fläche, Rahmen und Farbe**, nicht im Fließtext:
+ *
+ *   --schrift-anzeige  Überschriften, Navigation, Etiketten, Knöpfe (kurz)
+ *   --schrift-text     Fließtext, Tabellen, alles mit Ziffern (lang)
+ *   --schrift-mono     Kennungen, SHAs, Pfade
+ *
+ * -----------------------------------------------------------------------------
+ * DIE ANZEIGESCHRIFT DARF NIEMALS ZAHLEN TRAGEN — GEMESSEN, NICHT VERMUTET
+ * -----------------------------------------------------------------------------
+ *
+ * Silkscreen und Pixelify Sans wurden im echten Browser (Chromium 1217, Canvas,
+ * `getImageData`) Zeichen für Zeichen gegeneinander gerastert. Angegeben ist der
+ * Anteil abweichender Pixel; 0.000 heißt: **dieselbe Glyphe**.
+ *
+ *   Paar    Silkscreen 10/12/14/16/20px      Pixelify Sans 10/12/14/16/20px
+ *   0/O     0.000 0.000 0.000 0.000 0.000    0.000 0.000 0.000 0.000 0.000
+ *   8/B     0.114 0.333 0.259 0.333 0.322    0.000 0.000 0.031 0.000 0.020
+ *   5/S     0.100 0.150 0.160 0.167 0.156    0.122 0.120 0.145 0.211 0.184
+ *   2/Z     0.323 0.275 0.286 0.333 0.292    0.050 0.061 0.065 0.085 0.079
+ *   6/G     0.206 0.286 0.170 0.250 0.273    0.049 0.041 0.092 0.091 0.085
+ *   l/I     0.222 0.273 0.182 0.286 0.278    0.571 0.675 0.578 0.677 0.658
+ *
+ * `0` und `O` sind in **beiden** Schriften bei **jeder** Größe pixelgleich, in
+ * Pixelify zusätzlich `8` und `B`. Eine Lauf-Kennung, ein SHA oder ein
+ * Prozentwert in der Anzeigeschrift wäre also nicht bloß unschön, sondern
+ * mehrdeutig. Das ist der Grund für die Zweiteilung oben — sie ist keine
+ * Stilfrage, sondern das Ergebnis dieser Messung.
+ *
+ * Regel, die daraus folgt und die jede spätere Seite einhalten muss:
+ * `--schrift-anzeige` nur auf **statische deutsche Etiketten**. Sobald ein
+ * Element Daten trägt, gilt `--schrift-text`.
+ *
+ * Gewählt wurde Silkscreen, aus drei Gründen: die Verwechslungswerte sind außer
+ * bei `l/I` durchweg besser; sie liest sich wie eine Bitmap-Oberfläche (Büro,
+ * nicht Spielkonsole); und sie bringt zwei echte Schnitte statt einer
+ * Variablenachse mit. Umlaute und ß wurden geprüft und sind vollständig
+ * vorhanden — keine einzige fehlende Glyphe über `ÄÖÜäöüß` und den gesamten
+ * ASCII-Bereich, gemessen als Rasterunterschied gegen die Ersatzschrift.
+ *
+ *   Silkscreen · Jason Kottke · SIL Open Font License 1.1 · siehe
+ *   `schriften/OFL.txt` · selbst ausgeliefert, kein CDN (§19: dieser Dienst ist
+ *   öffentlich erreichbar und lädt nichts von fremden Hosts nach)
+ *   silkscreen-400.woff2  8 404 Byte   silkscreen-700.woff2  7 524 Byte
+ *   zusammen 15 928 Byte, beide Schnitte werden benutzt (400 Navigation und
+ *   Etiketten, 700 Überschriften).
+ *
+ * -----------------------------------------------------------------------------
+ * WARUM HELL
+ * -----------------------------------------------------------------------------
+ *
+ * „Office" heißt Papier, Aktendeckel und Holz — und Papier ist hell. Dieselbe
+ * Palette dunkel gedacht liest sich als Spielkonsole, nicht als Schreibtisch.
+ * Dazu zwei nüchterne Gründe: dunkle Tinte auf warmem Papier erreicht mühelos
+ * 15:1 statt der geforderten 4.5:1, was dem axe-Gate der Phase 7 zugutekommt;
+ * und die dünnen Striche einer Pixelschrift blühen auf dunklem Grund aus. Alle
+ * Farben liegen als Variablen vor, eine dunkle Fassung wäre also ein Tausch
+ * dieser Werte — sie ist bewusst **nicht** Teil dieses Durchgangs, weil jeder
+ * Wert einzeln nachgemessen werden müsste und die übrigen Seiten erst im
+ * zweiten Durchgang folgen.
+ *
+ * -----------------------------------------------------------------------------
+ * KONTRAST — GERECHNET, NICHT GESCHÄTZT
+ * -----------------------------------------------------------------------------
+ *
+ * WCAG 2.1 über alle tatsächlich vorkommenden Paare. Kleinster Wert 4.89:1,
+ * Fließtext 15.21:1:
+ *
+ *   tinte/blatt 15.21   tinte/tisch 11.66   tinte/vertieft 13.37
+ *   leise/blatt  7.33   leise/tisch  5.62   leise/vertieft  6.44
+ *   blatt/holz  10.28   tisch/holz   7.88
+ *   gruen/blatt  7.28   gruen/tisch  5.58   blatt/gruen 7.28
+ *   rost/blatt   6.81   rost/tisch   5.22   blatt/rost  6.81
+ *   blau/blatt   7.76   blau/tisch   5.95   blatt/blau  7.76
+ *   bernstein/blatt 6.37   bernstein/tisch 4.89
+ *
+ * Der Bernstein war zuerst `#8a5d0a` und fiel auf dem Tischton mit 4.17:1
+ * durch; er ist deshalb abgedunkelt. Farbe ist nirgends das einzige
+ * Unterscheidungsmerkmal — jeder Zustand trägt seinen deutschen Namen als Text
+ * und zusätzlich eine Form (Blockmarke links, Rahmenstärke).
+ */
+
+/* -------------------------------------------------------------------------- */
+/* Schriften                                                                   */
+/* -------------------------------------------------------------------------- */
+
+@font-face {
+  font-family: "Silkscreen";
+  src: url("./schriften/silkscreen-400.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  /*
+   * `swap`, nicht `block`: die Übersicht soll in drei Sekunden beantworten, ob
+   * etwas brennt. Ein unsichtbarer Titel, während 8 KB laden, arbeitet gegen
+   * genau diesen Zweck — der Text erscheint sofort in der Ersatzschrift und
+   * rückt nach.
+   */
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Silkscreen";
+  src: url("./schriften/silkscreen-700.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Marken                                                                      */
+/* -------------------------------------------------------------------------- */
+
+:root {
+  /* Flächen: Schreibtisch, Blatt, vertiefte Rille, dunkles Holz. */
+  --flaeche-tisch: #e6dac6;
+  --flaeche-blatt: #fdf8ee;
+  --flaeche-vertieft: #f2e9d9;
+  --holz: #4a3a2a;
+  --holz-hell: #6b543c;
+
+  /* Tinte. */
+  --tinte: #26201a;
+  --tinte-leise: #5f5040;
+
+  /* Zustandsfarben. Jede erreicht auf Blatt und auf Tisch mindestens 4.5:1. */
+  --gruen: #2f5c3f;
+  --bernstein: #7d5308;
+  --rost: #9c3323;
+  --blau: #28536f;
+
+  /* Linien. Hart und dunkel — der Rand ist hier ein Gestaltungsmittel. */
+  --linie: #26201a;
+  --linie-leise: #c3ae8c;
+  --linie-stark: 2px;
+
+  /* Fokus. In der dunklen Kopfleiste wird der Wert überschrieben. */
+  --fokus: #28536f;
+
+  /*
+   * Abstände auf einem 4-px-Raster. Ein Pixelraster, das sich an halben Pixeln
+   * ausrichtet, ist kein Pixelraster.
+   */
+  --luft-1: 4px;
+  --luft-2: 8px;
+  --luft-3: 12px;
+  --luft-4: 16px;
+  --luft-5: 24px;
+  --luft-6: 32px;
+  --luft-7: 48px;
+
+  /* Schriftgrade. */
+  --grad-xs: 12px;
+  --grad-s: 14px;
+  --grad-m: 16px;
+  --grad-l: 20px;
+  --grad-xl: 26px;
+
+  --schrift-anzeige: "Silkscreen", ui-monospace, "Courier New", monospace;
+  --schrift-text:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", roboto, "Helvetica Neue", arial, sans-serif;
+  --schrift-mono: ui-monospace, sfmono-regular, menlo, consolas, "Liberation Mono", monospace;
+
+  /*
+   * Harter Versatzschatten statt Weichzeichnung. Ein Schlagschatten mit
+   * Unschärferadius hat keine Pixelkante — das ist der eine Effekt, der den
+   * ganzen Stil aufheben würde.
+   */
+  --schatten: 4px 4px 0 rgb(38 32 26 / 22%);
+  --schatten-klein: 2px 2px 0 rgb(38 32 26 / 22%);
+
+  color-scheme: light;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Zurücksetzen                                                                */
+/* -------------------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  /*
+   * Kein `scroll-behavior: smooth`: Playwright rollt Elemente vor jedem Klick
+   * ins Bild, und weiches Rollen macht daraus ein bewegtes Ziel.
+   */
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  /*
+   * Die Schreibtischunterlage — **einfarbig**, ohne Karo.
+   *
+   * Hier lag ein 4-px-Karo aus zwei `repeating-linear-gradient` bei 3,5 %
+   * Schwarz. Es war die letzte Fläche mit einem Verlauf in der Elternkette
+   * eines Textknotens, und damit die letzte Ursache dafür, dass axe den
+   * Kontrast nicht entscheiden konnte. Gemessen am 18.8.2026, nachdem die
+   * Kopfleiste bereits einfarbig war — zwei Seiten meldeten noch drei
+   * unentschiedene Knoten, jeder mit derselben Begründung:
+   *
+   *   /buero       main > section > h2                     „background color
+   *   /buero       p[data-testid="buero-verbindung"]        could not be
+   *   /posteingang main > section > h2                      determined due to
+   *                                                         a background gradient"
+   *
+   * Es sind genau die Textknoten, die **nicht** in einer `.karte` liegen: deren
+   * nächste deckende Fläche war der Körper. Ein Verlauf, den 30 von 33 Knoten
+   * nie berühren, macht die drei übrigen ungeprüft — und §22s Gate-Satz sagt
+   * „zero violations", was über einen ungerechneten Kontrast nichts aussagt.
+   *
+   * Verworfen wurde die Alternative, `.inhalt` eine deckende Fläche zu geben:
+   * das Karo bliebe dann nur in den Rändern jenseits von 72rem sichtbar, also
+   * ausgerechnet dort, wo nichts steht — mehr Regel für weniger Wirkung. Der
+   * Pixel-Charakter trägt nach `docs/DESIGN.md` ohnehin „Fläche,
+   * Rahmen, Farbe und Balken"; das Karo war die eine Stelle, an der er im
+   * Untergrund lag. Kontrast Tinte/Tisch: 11.66:1, jetzt gerechnet.
+   */
+  background-color: var(--flaeche-tisch);
+  color: var(--tinte);
+  font-family: var(--schrift-text);
+  font-size: var(--grad-m);
+  line-height: 1.6;
+  /*
+   * Lange Kennungen (SHAs, UUIDs, Pfade) sind auf dieser Oberfläche der
+   * Normalfall und dürfen die Seite nicht waagrecht aufziehen — auf 390 px
+   * Handybreite reicht eine einzige uuid dafür.
+   */
+  overflow-wrap: anywhere;
+}
+
+img,
+svg {
+  max-width: 100%;
+}
+
+img {
+  /* Pixelgrafik bleibt pixelig, statt beim Skalieren weichgezeichnet zu werden. */
+  image-rendering: pixelated;
+  height: auto;
+}
+
+::selection {
+  background: var(--bernstein);
+  color: var(--flaeche-blatt);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Grundelemente                                                               */
+/* -------------------------------------------------------------------------- */
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--schrift-anzeige);
+  font-weight: 700;
+  /*
+   * Pixelschriften brauchen mehr Durchschuss als Proportionalschriften: die
+   * Versalien reichen bis an die Kante des Em-Quadrats, Ober- und Unterlängen
+   * stoßen sonst aneinander.
+   */
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  margin: 0 0 var(--luft-3);
+  color: var(--tinte);
+}
+
+h1 {
+  font-size: var(--grad-l);
+}
+
+h2 {
+  font-size: var(--grad-m);
+  /* Kapitelmarke: ein Klotz links vom Titel, wie ein Reiter am Aktendeckel. */
+  border-left: 8px solid var(--holz);
+  padding-left: var(--luft-3);
+}
+
+h3 {
+  font-size: var(--grad-s);
+  color: var(--holz);
+  margin-top: var(--luft-5);
+}
+
+h4 {
+  font-size: var(--grad-xs);
+  color: var(--tinte-leise);
+}
+
+/*
+ * Ein Element, das **Daten** trägt — der Schalter zurück auf die Textschrift.
+ *
+ * Die Regel im Dateikopf gilt ohne Ausnahme: sobald ein Element Daten trägt,
+ * gilt die Textschrift, weil `0`/`O` in der Anzeigeschrift bei jeder Größe
+ * dieselbe Glyphe sind. Beim Anwenden des Systems auf die übrigen neun Seiten
+ * war sie an einem guten Dutzend Stellen gebrochen, und keine davon war neu:
+ * „#42 · Darf der Bot auf main pushen?" stand seit Phase 4 in einer `h3`, ein
+ * Dokumententitel wie „Vereinsstatuten 2026" seit Phase 6, „Zeile 4:
+ * Entscheidung erbeten" und „Seite 1 von 3" seit Phase 7.
+ *
+ * **Gefunden auf dem Bildschirmfoto, nicht beim Lesen**, und das ist der Grund,
+ * warum diese Regel so breit ausfällt: die Sprungmarke „Zeile 4" liest sich in
+ * Silkscreen als „Zeile 9". Nicht schwer zu unterscheiden — *nicht zu
+ * unterscheiden*. Der Kopf dieser Datei nennt für `l/I` einen Rasterunterschied
+ * von 0.22–0.29 und leitet daraus dieselbe Regel ab; für `4`/`9` steht dort
+ * keine Messung, weil das Paar nicht in der Liste stand. Es hätte darin stehen
+ * müssen.
+ *
+ * Deshalb **ohne Elementliste**: die Regel gilt für jedes Element, das sie
+ * trägt, weil jedes Element Daten tragen kann — eine Überschrift, ein Knopf,
+ * ein Etikett, eine Sprungmarke. Eine Aufzählung wäre eine zweite Stelle, an
+ * der jemand ein Element vergisst, und der Fehler wäre wieder unsichtbar, bis
+ * ihn jemand fotografiert. `font-family` vererbt, also genügt sie auch auf
+ * einem Behälter.
+ */
+[data-inhalt="daten"] {
+  font-family: var(--schrift-text);
+  letter-spacing: 0;
+}
+
+p {
+  margin: 0 0 var(--luft-3);
+}
+
+a {
+  color: var(--blau);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+a:hover {
+  background: var(--bernstein);
+  color: var(--flaeche-blatt);
+  text-decoration: none;
+}
+
+code,
+kbd,
+samp,
+pre {
+  font-family: var(--schrift-mono);
+  font-size: 0.9em;
+}
+
+code {
+  background: var(--flaeche-vertieft);
+  border: 1px solid var(--linie-leise);
+  padding: 0 var(--luft-1);
+}
+
+strong {
+  font-weight: 700;
+}
+
+/*
+ * Zahlen laufen in Spalten, also Tabellenziffern. Ohne das springt eine
+ * Prozentangabe bei jeder Aktualisierung in der Breite, und §17.1s Kennzahlen
+ * werden über die Sekunden hinweg unruhig.
+ */
+strong,
+td,
+th,
+time,
+.zahl {
+  font-variant-numeric: tabular-nums;
+}
+
+ul,
+ol {
+  margin: 0 0 var(--luft-3);
+  padding-left: var(--luft-5);
+}
+
+li {
+  margin-bottom: var(--luft-1);
+}
+
+hr {
+  border: 0;
+  border-top: var(--linie-stark) solid var(--linie-leise);
+  margin: var(--luft-5) 0;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--grad-s);
+  margin-bottom: var(--luft-3);
+}
+
+th {
+  font-family: var(--schrift-anzeige);
+  font-weight: 400;
+  font-size: var(--grad-xs);
+  text-align: left;
+  color: var(--flaeche-blatt);
+  background: var(--holz);
+  padding: var(--luft-2) var(--luft-3);
+}
+
+td {
+  padding: var(--luft-2) var(--luft-3);
+  border-bottom: 1px solid var(--linie-leise);
+  vertical-align: top;
+}
+
+/* Rille: gestreifte Zeilen, damit eine breite Tabelle auf dem Handy führbar bleibt. */
+tbody tr:nth-child(even) td {
+  background: var(--flaeche-vertieft);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Formularelemente                                                            */
+/* -------------------------------------------------------------------------- */
+
+input,
+select,
+textarea {
+  font-family: var(--schrift-text);
+  font-size: var(--grad-m);
+  color: var(--tinte);
+  background: var(--flaeche-blatt);
+  border: var(--linie-stark) solid var(--linie);
+  border-radius: 0;
+  padding: var(--luft-2) var(--luft-3);
+  /* Eingefräst statt erhaben — das Gegenstück zum Knopf. */
+  box-shadow: inset 2px 2px 0 rgb(38 32 26 / 12%);
+  max-width: 100%;
+}
+
+label {
+  display: inline-block;
+  font-family: var(--schrift-anzeige);
+  font-size: var(--grad-xs);
+  color: var(--holz);
+  margin-bottom: var(--luft-1);
+}
+
+/*
+ * Ankreuzfeld und Auswahlknopf werden gezeichnet, nicht bloß eingefärbt.
+ *
+ * Die Regel darüber ist für Textfelder gedacht: Innenabstand, eingefräster
+ * Schatten, 2 px Rand. Auf ein Ankreuzfeld angewandt ergibt sie einen leeren
+ * Kasten von der Größe eines Eingabefelds, in dem das Häkchen des Browsers
+ * verschwindet — die neun Seiten dieses Durchgangs bestehen an mehreren
+ * Stellen fast nur aus solchen Feldern (§11s Gate-Liste, A26s Pause, §8s
+ * Persona-Stufe), also wären sie unbenutzbar gewesen.
+ *
+ * Beide bleiben **quadratisch**. Ein runder Auswahlknopf ist die vertraute
+ * Form, hat aber auf 18 px keine Pixelkante, und das ist der eine Effekt, der
+ * den Stil aufhebt (dieselbe Begründung wie beim Schatten ohne Unschärfe).
+ * Unterschieden werden die beiden deshalb über die **Größe der Füllung**:
+ * das Ankreuzfeld füllt sich fast ganz, der Auswahlknopf trägt einen kleinen
+ * Punkt in der Mitte. Die tragende Unterscheidung ist ohnehin keine
+ * gezeichnete — ein Vorleser nennt Typ und Gruppe, und jede Gruppe von
+ * Auswahlknöpfen steht hier in einem `fieldset` mit `legend`.
+ *
+ * `forced-colors` gibt beide an den Browser zurück: im Kontrastmodus des
+ * Betriebssystems werden `background` und `box-shadow` verworfen, und was
+ * bliebe, wäre ein Kasten ohne erkennbaren Zustand.
+ */
+input[type="checkbox"],
+input[type="radio"] {
+  appearance: none;
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  margin: 0;
+  background: var(--flaeche-blatt);
+  border: var(--linie-stark) solid var(--linie);
+  border-radius: 0;
+  box-shadow: var(--schatten-klein);
+  cursor: pointer;
+  /* Sitzt auf der Grundlinie der Beschriftung daneben. */
+  vertical-align: -3px;
+}
+
+input[type="checkbox"]:checked,
+input[type="radio"]:checked {
+  background: var(--holz);
+}
+
+/* Fast voll — „an". */
+input[type="checkbox"]:checked {
+  box-shadow:
+    var(--schatten-klein),
+    inset 0 0 0 3px var(--flaeche-blatt);
+}
+
+/* Ein Punkt — „dieses von mehreren". */
+input[type="radio"]:checked {
+  box-shadow:
+    var(--schatten-klein),
+    inset 0 0 0 5px var(--flaeche-blatt);
+}
+
+input[type="checkbox"]:disabled,
+input[type="radio"]:disabled {
+  background: var(--flaeche-vertieft);
+  border-color: var(--tinte-leise);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+input[type="checkbox"]:disabled:checked,
+input[type="radio"]:disabled:checked {
+  background: var(--tinte-leise);
+}
+
+@media (forced-colors: active) {
+  input[type="checkbox"],
+  input[type="radio"] {
+    appearance: auto;
+  }
+}
+
+/*
+ * Die Gruppe. `min-width: 0` ist kein Schmuck: ein `fieldset` weigert sich
+ * ohne das seit jeher zu schrumpfen und zieht auf 390 px die ganze Seite
+ * waagrecht auf.
+ */
+fieldset {
+  min-width: 0;
+  background: var(--flaeche-blatt);
+  border: var(--linie-stark) solid var(--linie);
+  border-radius: 0;
+  box-shadow: var(--schatten-klein);
+  padding: var(--luft-4);
+  margin: 0 0 var(--luft-4);
+}
+
+legend {
+  font-family: var(--schrift-anzeige);
+  font-size: var(--grad-xs);
+  letter-spacing: 0.03em;
+  color: var(--flaeche-blatt);
+  background: var(--holz);
+  border: var(--linie-stark) solid var(--linie);
+  padding: var(--luft-1) var(--luft-3);
+}
+
+fieldset > :last-child {
+  margin-bottom: 0;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Beschreibungslisten                                                         */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Kopfdaten einer Sitzung, einer Aufgabe, eines Schreibtischs: durchweg ein
+ * kurzes deutsches Etikett und ein Wert. Als Raster statt als Einrückung, weil
+ * die Werte sonst in keiner Spalte stehen und das Auge jede Zeile neu suchen
+ * muss.
+ *
+ * Das Etikett trägt die Anzeigeschrift und der Wert die Textschrift — das ist
+ * die gemessene Regel aus dem Dateikopf und hier besonders scharf: in diesen
+ * Listen stehen Sitzungskennungen, Pfade und Dauern.
+ */
+dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--luft-2) var(--luft-4);
+  align-items: baseline;
+  margin: 0 0 var(--luft-4);
+}
+
+dt {
+  font-family: var(--schrift-anzeige);
+  font-size: var(--grad-xs);
+  color: var(--holz);
+}
+
+dd {
+  margin: 0;
+  font-size: var(--grad-s);
+}
+
+@media (max-width: 40rem) {
+  /*
+   * Auf Handybreite reicht eine Spalte nicht für beides: ein Etikett wie
+   * „Arbeitsverzeichnis" und ein absoluter Pfad daneben ergeben zwei
+   * Spalten von je acht Zeichen. Also untereinander.
+   */
+  dl {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  dd {
+    margin-bottom: var(--luft-3);
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Aufklappbares                                                               */
+/* -------------------------------------------------------------------------- */
+
+details {
+  background: var(--flaeche-vertieft);
+  border: 1px solid var(--linie-leise);
+  margin: 0 0 var(--luft-2);
+}
+
+/*
+ * Die Zusammenfassung trägt **Textschrift**, und das ist eine Ausnahme mit
+ * Grund: `Spuren.tsx` setzt dort Dateipfade und Zählungen („+12 / −3"). Nach
+ * der Messung im Dateikopf sind `0` und `O` in der Anzeigeschrift dieselbe
+ * Glyphe, eine Zusammenfassung mit Zahlen wäre also mehrdeutig. Den
+ * Pixelcharakter trägt hier der Rahmen, nicht die Schrift.
+ */
+summary {
+  font-family: var(--schrift-text);
+  font-size: var(--grad-s);
+  font-weight: 700;
+  color: var(--holz);
+  padding: var(--luft-2) var(--luft-3);
+  cursor: pointer;
+}
+
+details[open] > summary {
+  border-bottom: 1px solid var(--linie-leise);
+}
+
+details > :not(summary) {
+  margin: var(--luft-2) var(--luft-3);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Maschinenausgabe                                                            */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Sitzungsprotokolle, Diff-Hunks, Ereignis-Nutzlasten.
+ *
+ * Der Block bekommt **sein eigenes Rollfeld**. Das ist die tragende
+ * Entscheidung dieser Regel: eine einzige lange Protokollzeile — und die sind
+ * hier der Normalfall — würde sonst die ganze Seite waagrecht aufziehen, auf
+ * 390 px schon bei einem absoluten Pfad. Die Höhe ist ebenso gedeckelt: eine
+ * Nutzlast von zweitausend Zeilen ist Beiwerk, nicht die Antwort auf „was ist
+ * hier passiert".
+ *
+ * `overflow-wrap: normal` hebt die Regel aus `body` gezielt wieder auf. Dort
+ * steht `anywhere`, damit eine uuid die Seite nicht aufzieht; in einer
+ * Maschinenausgabe würde derselbe Wert jede Diff-Ausrichtung und jede
+ * Einrückung zerreißen — und ein umgebrochener Patch ist kein Patch mehr.
+ */
+pre {
+  margin: 0 0 var(--luft-2);
+  padding: var(--luft-2) var(--luft-3);
+  background: var(--flaeche-vertieft);
+  border: 1px solid var(--linie-leise);
+  color: var(--tinte);
+  line-height: 1.5;
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow: auto;
+  max-height: 24rem;
+  tab-size: 2;
+}
+
+/* Sonst trägt eine Ausgabe zwei Rahmen und zwei Hintergründe übereinander. */
+pre code {
+  background: none;
+  border: 0;
+  padding: 0;
+}
+
+small {
+  color: var(--tinte-leise);
+  font-size: var(--grad-xs);
+  line-height: 1.5;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Fokus                                                                       */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Sichtbarer Fokus ist ein Phase-7-Gate („axe scan: zero violations"), und der
+ * Ring muss gegen den Untergrund mindestens 3:1 stehen. Blau auf Blatt sind
+ * 7.76:1, auf Tisch 5.95:1; in der dunklen Kopfleiste wird `--fokus` auf den
+ * Blattton umgestellt (10.28:1 gegen Holz).
+ */
+:focus-visible {
+  outline: 3px solid var(--fokus);
+  outline-offset: 2px;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Bewegung                                                                    */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Es gibt keine.
+ *
+ * Kein `transition`, kein `animation`, kein `scroll-behavior: smooth` — die
+ * einzige Bewegung im ganzen System ist der Knopf, der beim Drücken um zwei
+ * Pixel in seinen eigenen Schatten rutscht, und das ist ein Sprung ohne Dauer.
+ *
+ * Der übliche `prefers-reduced-motion`-Riegel stand hier und ist bewusst
+ * **entfernt** worden statt entschärft: ohne `!important` überschreibt ihn jede
+ * spezifischere Regel, er wäre also eine Vorkehrung, die nicht wirkt und
+ * trotzdem wie eine aussieht — §8.2s sechste Domäne. Mit `!important` würde er
+ * Animationen fremder Stränge abschalten, die ich nicht gelesen habe und deren
+ * Nachweise ich nicht kenne. Wer diesem System später Bewegung hinzufügt, bringt
+ * den Riegel mit; bis dahin gibt es nichts zu reduzieren.
+ */

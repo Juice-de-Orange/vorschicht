@@ -1,0 +1,23 @@
+{
+  "name": "@vorschicht/orchestrator",
+  "version": "0.0.0",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --noEmit",
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@vorschicht/core": "workspace:*",
+    "@vorschicht/db": "workspace:*",
+    "@vorschicht/mcp": "workspace:*",
+    "@vorschicht/shared": "workspace:*",
+    "pg-boss": "^11.0.4",
+    "pino": "^10.0.0",
+    "postgres": "^3.4.9",
+    "zod": "^4.1.13"
+  }
+}

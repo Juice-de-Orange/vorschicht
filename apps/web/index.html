@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!--
+      Der Ton der Kopfleiste (`--holz` aus `apps/web/src/styles/basis.css`), nicht
+      der der Seite: das Telefon faerbt damit die Leiste ueber dem Dokument, und
+      die soll die Schreibtischkante fortsetzen statt einen zweiten Farbwechsel
+      zu erzeugen. `background_color` im Manifest traegt dagegen den Ton des
+      Blattes, weil der den Startbildschirm faerbt, bevor die Seite da ist.
+      Beide standen bis 18.8.2026 auf einem dunklen Wert aus der Zeit vor dem
+      Gestaltungsdurchgang.
+    -->
+    <meta name="theme-color" content="#4a3a2a" />
+    <title>Vorschicht</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
