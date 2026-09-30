@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vorschicht — Bausteine</title>
+    <!--
+      Musterbogen des Gestaltungssystems.
+
+      Er lädt **die echten Stildateien** über einen relativen Pfad, nicht eine
+      Kopie davon — im Browser geöffnet zeigt er also immer den Stand, der auch
+      ausgeliefert wird, und kann nicht davon abdriften. Das ist der einzige
+      Grund, warum er hier liegen darf: ein Musterbogen mit eigenem CSS wäre
+      nach der zweiten Änderung eine Lüge über das System, das er zeigt.
+
+      Er ist bewusst **keine** Seite der Anwendung: keine Route, kein Bündel,
+      kein React. Wer einen Baustein ändert, sieht hier ohne Datenbank und ohne
+      Anmeldung, was er angerichtet hat.
+    -->
+    <link rel="stylesheet" href="../../apps/web/src/styles/index.css" />
+  </head>
+  <body>
+    <div class="rahmen">
+      <header class="kopf">
+        <div class="kopf-zeile">
+          <h1 class="marke">Vorschicht</h1>
+          <span class="marke-zusatz">Bausteine</span>
+        </div>
+        <nav class="navigation">
+          <button type="button" aria-current="page">Überblick</button>
+          <button type="button">Büro</button>
+          <button type="button">Projekte</button>
+          <button type="button">Aufgaben</button>
+          <button type="button">Posteingang</button>
+        </nav>
+      </header>
+
+      <main class="inhalt">
+        <section class="karte">
+          <h2>Statusblase</h2>
+          <p class="blase" data-zustand="normal">
+            <strong>Normalbetrieb</strong> — Alles im Normalbetrieb. Das engste Fenster steht bei
+            41,8 %.
+          </p>
+          <p class="blase" data-zustand="wrap_up">
+            <strong>Aufräummodus</strong> — Ab 85 % startet nichts Neues mehr; laufende Arbeit wird
+            sauber geparkt.
+          </p>
+          <p class="blase" data-zustand="hard_stop">
+            <strong>Angehalten</strong> — 95 % erreicht. Die restlichen 5 % gehören dir.
+          </p>
+        </section>
+
+        <section class="karte">
+          <h2>Warnstreifen</h2>
+          <p class="streifen" data-ton="fehler">Server nicht erreichbar: ECONNREFUSED.</p>
+          <p class="streifen" data-ton="warnung">
+            Wochenbudget erschöpft — Betrieb ruht bis 12.08.2026, 09:00.
+          </p>
+          <p class="streifen" data-ton="hinweis">
+            Die ausführliche Fassung mit Optionen steht im Posteingang.
+          </p>
+        </section>
+
+        <section class="karte">
+          <h2>Kennzahlen</h2>
+          <ul class="kennzahlen">
+            <li data-ton="ok" data-balken style="--fuellung: 41.8">
+              <span class="etikett">5-Stunden-Fenster:</span> <strong>41,8 %</strong> · Reset in 2 h
+            </li>
+            <li data-ton="warnung" data-balken style="--fuellung: 88.4">
+              <span class="etikett">Wochenfenster:</span> <strong>88,4 %</strong> (geschätzt) ·
+              Reset in 3 Tagen
+            </li>
+            <li data-ton="stopp" data-balken style="--fuellung: 96.2">
+              <span class="etikett">Wochenfenster (opus):</span> <strong>96,2 %</strong> · Reset in
+              5 Tagen
+            </li>
+            <li data-ton="unbekannt">
+              <span class="etikett">Wochenfenster je Modell (haiku):</span>
+              <strong>nicht lesbar</strong>
+            </li>
+          </ul>
+        </section>
+
+        <section class="karte">
+          <h2>Knöpfe</h2>
+          <p>
+            <button type="button" class="knopf">Zurück</button>
+            <button type="button" class="knopf" data-ton="haupt">Ausrollen</button>
+            <button type="button" class="knopf" data-ton="ruf">
+              2 Aufgaben warten auf deine Entscheidung
+            </button>
+            <button type="button" class="knopf" disabled>Nicht möglich</button>
+          </p>
+        </section>
+
+        <section class="karte">
+          <h2>Tabelle</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Release</th>
+                <th>Ergebnis</th>
+                <th>Dauer</th>
+                <th>Ziel</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>image:aaaaaaaaaa</td>
+                <td>ausgerollt</td>
+                <td>18,4 s</td>
+                <td>—</td>
+              </tr>
+              <tr>
+                <td>image:bbbbbbbbbb</td>
+                <td>zurückgerollt</td>
+                <td>41,9 s</td>
+                <td>aaaaaaaaaa (e2e:gut)</td>
+              </tr>
+              <tr>
+                <td>image:cccccccccc</td>
+                <td>angehalten</td>
+                <td>0,8 s</td>
+                <td>—</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="karte">
+          <h2>Plakette</h2>
+          <p>
+            Ein Zustand als Marke. <strong>Textschrift</strong>, weil sie Ziffern trägt („L5",
+            „P0") — und die Anzeigeschrift zeichnet 0/O und 4/9 gleich.
+          </p>
+          <p>
+            <span class="plakette">neutral</span>
+            <span class="plakette" data-ton="ok">aufgenommen</span>
+            <span class="plakette" data-ton="warnung">P1 — dringend</span>
+            <span class="plakette" data-ton="stopp">P0 — sofort</span>
+            <span class="plakette" data-ton="info">L4</span>
+          </p>
+          <p>
+            §17.8s vier Vertrauensstufen. Gemessen ist gefüllt, geschätzt und blind sind
+            <em>gestrichelt</em> — die Unterscheidung hängt nicht an einem Farbton (A64/A73):
+          </p>
+          <p>
+            <span class="plakette" data-vertrauen="offiziell">[Gemessen]</span>
+            <span class="plakette" data-vertrauen="geschaetzt">[Geschätzt]</span>
+            <span class="plakette" data-vertrauen="strittig">[Strittig]</span>
+            <span class="plakette" data-vertrauen="blind">[Keine Messung]</span>
+          </p>
+        </section>
+
+        <section class="karte">
+          <h2>Wahl und Gruppe</h2>
+          <fieldset>
+            <legend>Stellung</legend>
+            <p class="wahl" data-gewaehlt>
+              <label><input type="radio" name="beispiel-pause" checked /> Normalbetrieb</label>
+              <small>Der Wächter entscheidet allein nach dem Budget (§7.2).</small>
+            </p>
+            <p class="wahl">
+              <label><input type="radio" name="beispiel-pause" /> Harte Pause — sofort anhalten</label>
+              <small>Laufende Sitzungen bekommen 60 Sekunden und werden dann beendet.</small>
+            </p>
+          </fieldset>
+          <p class="wahl">
+            <label><input type="checkbox" /> Sparbetrieb einschalten</label>
+          </p>
+          <p class="wahl">
+            <label><input type="checkbox" checked disabled /> Tests (gesperrt, §11)</label>
+          </p>
+        </section>
+
+        <section class="karte">
+          <h2>Optionen — §15s Entscheidungskarte</h2>
+          <p>Die Empfehlung muss man sehen, ohne zu lesen:</p>
+          <ul class="optionen">
+            <li data-empfohlen>
+              <label><input type="radio" name="beispiel-option" /> Warten — erst rückwärtskompatibel machen</label>
+              <strong class="empfehlung"> — Empfehlung der Abteilung</strong>
+              <p class="etikett" data-ton="gut">Dafür:</p>
+              <ul class="liste">
+                <li>Ein Rollback stellt danach wirklich den vorigen Stand her.</li>
+              </ul>
+              <p class="etikett" data-ton="schlecht">Dagegen:</p>
+              <ul class="liste">
+                <li>Der Rollout liegt bis dahin still.</li>
+              </ul>
+            </li>
+            <li>
+              <label><input type="radio" name="beispiel-option" /> Trotzdem ausrollen</label>
+              <p class="etikett" data-ton="gut">Dafür:</p>
+              <ul class="liste">
+                <li>Das Release geht heute raus.</li>
+              </ul>
+              <p class="etikett" data-ton="schlecht">Dagegen:</p>
+              <ul class="liste">
+                <li>Ein Rollback stellt danach nur den Code her, nicht die Daten.</li>
+              </ul>
+            </li>
+          </ul>
+        </section>
+
+        <section class="karte">
+          <h2>Lesbarkeit — §13s drei Zustände</h2>
+          <p class="lesbarkeit" data-lesbarkeit="lesbar">
+            Abgelegt · durchsuchbar (23 804 Zeichen Text)
+          </p>
+          <p class="lesbarkeit" data-lesbarkeit="leer">
+            gelesen, aber ohne Text — die Datei enthält keine Textschicht
+          </p>
+          <p class="lesbarkeit" data-lesbarkeit="ausstehend">
+            noch nicht durchsuchbar — aus dieser Datei (PDF) wurde kein Text ausgelesen
+          </p>
+        </section>
+
+        <section class="karte">
+          <h2>Maschinenausgabe und Aufklappbares</h2>
+          <p>
+            Ein <code>&lt;pre&gt;</code> rollt in seinem <strong>eigenen</strong> Feld — eine lange
+            Protokollzeile darf die Seite nicht aufziehen:
+          </p>
+          <pre>-- 0023: legacy_state entfernen
+-- FIXME laut Kommentar der vorigen Sitzung: &lt;img src=x onerror="alert(1)"&gt; — steht so in der Datei und muss als Text ankommen, nicht als Markup.
+ALTER TABLE tasks DROP COLUMN legacy_state;</pre>
+          <details>
+            <summary>Nutzlast</summary>
+            <pre>{ "runId": "4444…", "number": 42 }</pre>
+          </details>
+        </section>
+
+        <section class="karte">
+          <h2>Beschreibungsliste</h2>
+          <dl>
+            <dt>Modell</dt>
+            <dd>opus-class</dd>
+            <dt>Sitzung</dt>
+            <dd>8f3a1c7e-2b44-4d19-9a05-1c0de7b6f210</dd>
+            <dt>Kappen (A32)</dt>
+            <dd>40 Züge · 16 USD-Äquivalent · Wanduhr 90 min 00 s</dd>
+          </dl>
+        </section>
+
+        <section class="karte">
+          <h2>Zeitstrahl und Sitzungsprotokoll</h2>
+          <ol class="zeitstrahl">
+            <li><span class="leise">13:26:13</span> angelegt <small>(product)</small></li>
+            <li><span class="leise">16:49:13</span> Entscheidung erbeten <small>(db-review)</small></li>
+          </ol>
+          <ol class="transkript">
+            <li>
+              <strong class="etikett" data-inhalt="daten">3 · Werkzeugaufruf</strong>
+              <span>Read · migrations/0023.sql</span>
+              <pre>ALTER TABLE tasks DROP COLUMN legacy_state;</pre>
+            </li>
+            <li data-fokus>
+              <strong class="etikett" data-inhalt="daten">4 · Werkzeugaufruf</strong>
+              <span>mcp__vorschicht__escalate_ask [Entscheidung erbeten]</span>
+              <pre>{ "urgency": "P1" }</pre>
+            </li>
+          </ol>
+        </section>
+
+        <section class="karte">
+          <h2>Werkzeugleiste, Leerstand und Ablegezone</h2>
+          <p class="werkzeugleiste">
+            <span class="feld">
+              <label for="beispiel-suche">Suchbegriff</label>
+              <input id="beispiel-suche" value="Kündigung" />
+            </span>
+            <button type="button" class="knopf" data-ton="haupt">Suchen</button>
+            <span class="feld">
+              <label for="beispiel-abteilung">Abteilung</label>
+              <select id="beispiel-abteilung">
+                <option>Alle</option>
+              </select>
+            </span>
+          </p>
+          <p class="leerstand">
+            Noch nichts entschieden. Was du beantwortest, steht danach hier.
+          </p>
+          <div class="ablegezone">
+            <p>Datei hierher ziehen — oder auswählen:</p>
+            <input type="file" />
+          </div>
+        </section>
+
+        <section class="karte">
+          <h2>Listen und Formular</h2>
+          <h3>Zeilenliste</h3>
+          <ul class="liste">
+            <li>coder · sonnet-class</li>
+            <li>reviewer · opus-class</li>
+          </ul>
+
+          <h3>Protokoll</h3>
+          <ul class="protokoll">
+            <li>15:54:39 · task.state_changed · scheduler</li>
+            <li>15:55:53 · gate.finished · merge-queue</li>
+            <li>15:56:30 · deploy.finished · ops</li>
+          </ul>
+
+          <h3>Formular</h3>
+          <p>
+            <label for="beispiel">Gerätename</label><br />
+            <input id="beispiel" value="Handy" />
+          </p>
+          <p class="leise">Fließtext, Zahlen und Kennungen laufen in der Textschrift:</p>
+          <p>
+            0O 1lI 5S 8B 2Z 6G · 100,0 % · <code>8f3a1c7e-2b44-4d19-9a05-1c0de7b6f210</code>
+          </p>
+          <p class="etikett">
+            Anzeigeschrift, nur Etiketten: 0O 1lI 5S — hier sind 0 und O dieselbe Glyphe, deshalb
+            trägt sie nie eine Zahl.
+          </p>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
