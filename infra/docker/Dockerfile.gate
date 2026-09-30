@@ -1,0 +1,136 @@
+# =============================================================================
+# gate — this project's own baseline suite (§11), in the environment it assumes.
+#
+# `pnpm gate` is a POSIX tool: nine steps that spawn `pnpm`, one that spawns a
+# `.sh`, tests that assert `chmod 0600` and paths with forward slashes, and a
+# secrets scan that needs gitleaks. On a Windows checkout none of it runs —
+# measured on 2026-08-16: not one of the nine steps started, and 27 tests fail
+# for reasons no portability fix can reach, because they assert §6.6 and §19
+# guarantees that are POSIX by design.
+#
+# So the gate runs here instead, and this image is deliberately the
+# **orchestrator image's sibling** rather than a CI convenience: same node
+# digest, same pnpm, same pinned gitleaks binary, no docker client. A gate that
+# runs in a materially different environment from the studio is a gate whose
+# green means something else.
+#
+# What it does *not* contain: the repository. `gate-in-container.sh` streams the
+# working tree in at run time, so an uncommitted change can be checked — which
+# is the whole point of a local gate, and the difference from P0.G2's `git
+# archive` export, which checks what is committed.
+#
+# **Not root**, and that is load-bearing rather than hygiene. Several tests assert
+# what an unprivileged process cannot do — read a `chmod 000` file, write into a
+# directory it does not own — and those are §6.6 and §19 guarantees. As root
+# every one of them is unreachable and reports green, which is worse than not
+# running them: it is a guarantee that reads as proven while nothing was tried.
+# Measured on the first run of this image: two such tests went green as root and
+# are red-then-green again as uid 10001, the same id the orchestrator uses.
+# =============================================================================
+ARG NODE_IMAGE=node:22-bookworm-slim@sha256:f32b81066cde10a75dbac96646099533316d94bac4150c55da1636e1f0ffdc46
+FROM ${NODE_IMAGE}
+
+ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH CI=true
+RUN corepack enable && corepack prepare pnpm@11.1.2 --activate
+
+# `git` is not optional here: three gate steps shell out to it (the secrets scan
+# materialises `git ls-files`, the append-only lint reads history, and several
+# integration tests build real repositories).
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      ca-certificates curl git \
+ && rm -rf /var/lib/apt/lists/*
+
+# gitleaks, pinned by version *and* SHA-256 — §11's baseline gate 4.
+#
+# The same two values as `Dockerfile.orchestrator`, and `gitleaks-pin.test.ts`
+# now fails the build when any of the four places drift. The reason this image
+# carries the binary rather than reaching for a docker socket is the one that
+# file already gives at length: a container that can talk to the daemon can
+# start a privileged one that mounts `/`. Here it would also simply not work —
+# the daemon resolves a `-v` source against the host, and this container's paths
+# are its own.
+ARG GITLEAKS_VERSION=8.30.1
+ARG GITLEAKS_SHA256=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+RUN set -eux; \
+    curl -fsSL -o /tmp/gitleaks.tar.gz \
+      "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"; \
+    echo "${GITLEAKS_SHA256}  /tmp/gitleaks.tar.gz" | sha256sum -c -; \
+    tar -xzf /tmp/gitleaks.tar.gz -C /usr/local/bin gitleaks; \
+    rm -f /tmp/gitleaks.tar.gz; \
+    chmod 0755 /usr/local/bin/gitleaks; \
+    installed="$(gitleaks version | tr -d 'v[:space:]')"; \
+    if [ "$installed" != "${GITLEAKS_VERSION}" ]; then \
+      echo "gitleaks-Pin verletzt: installiert ${installed}, erwartet ${GITLEAKS_VERSION}" >&2; \
+      exit 1; \
+    fi
+
+
+# Chromium's system libraries, and only those.
+#
+# Phase 7 is almost entirely browser work with four *measuring* exit gates, so
+# a browser has to exist here; and the vault gate (P6.G6) already ends in a
+# real upload over the wire, which only a browser can demonstrate.
+#
+# The split is deliberate: the libraries need apt and therefore root, so they
+# are baked in — but the **browser binary** is installed at run time by the
+# project's own playwright into a named volume. That way the binary can never
+# drift from the lockfile.
+#
+# The ARG below is only the version whose *dependency list* is consulted, and
+# `playwright@1.57.1` does not exist as a package at all — only `@playwright/test`
+# carries that number, which is how the first attempt failed. It is pinned to
+# what the lockfile resolves to, and `gate-image-pins.test.ts` fails the build
+# when the two drift: a deps list from a different release is the kind of
+# mismatch that surfaces as one missing shared library at the first browser
+# launch, months later.
+ARG PLAYWRIGHT_DEPS_VERSION=1.62.1
+RUN npx --yes "playwright@${PLAYWRIGHT_DEPS_VERSION}" install-deps chromium \
+ && rm -rf /var/lib/apt/lists/* /root/.npm
+
+RUN groupadd --gid 10001 gate \
+ && useradd --uid 10001 --gid 10001 --create-home --home-dir /home/gate gate \
+ && mkdir -p /work /pnpm-store /ms-playwright \
+ && chown gate:gate /work /pnpm-store /ms-playwright
+
+# A fresh named volume inherits the image's ownership at its mount point, which
+# is what makes /pnpm-store writable for an unprivileged user without a chown at
+# run time. An *existing* volume keeps whatever it had — `gate-in-container.sh`
+# says so by name when it cannot write there.
+USER gate
+ENV HOME=/home/gate PATH=/home/gate/.local/bin:$PATH
+
+# The git identity, and it has to be **global** rather than system-wide.
+#
+# `git.ts` runs every git invocation with `GIT_CONFIG_NOSYSTEM=1`, deliberately:
+# the studio must behave the same whatever a host machine has configured. So a
+# `--system` identity is invisible to exactly the code under test, and the first
+# run of this image proved it — the rebase died with "Committer identity
+# unknown … got 'gate@<container-id>.(none)' while `git config user.email`
+# answered correctly in an ordinary shell. `Dockerfile.orchestrator` already
+# uses `--global` for this reason; the two now agree.
+#
+# And it is the **bot** identity (A36), not a gate-specific one: the merge queue
+# asserts that every commit it brings in is authored by the bot, so a different
+# ambient identity turns a passing suite red for a reason that has nothing to do
+# with the code.
+RUN git config --global user.name 'Vorschicht Bot' \
+ && git config --global user.email 'vorschicht-bot@example.com' \
+ && git config --global --add safe.directory '*' \
+ && git config --global init.defaultBranch main
+
+# The Claude CLI, at the same pin the orchestrator carries (A27). Without it
+# `gate:cli-contract` reports infra on every run — honest, and still a ninth
+# step that never checks anything. It is free to run: A32's contract asserts
+# that the flags *parse*, by pairing the flag under test with a deliberately
+# unknown one, so no session starts, no token is needed and no budget moves.
+ARG CLAUDE_CLI_VERSION=2.1.220
+ENV CLAUDE_CLI_VERSION=${CLAUDE_CLI_VERSION}
+RUN curl -fsSL https://claude.ai/install.sh | bash -s "${CLAUDE_CLI_VERSION}" \
+ && installed="$(claude --version | grep -oE '[0-9]+[.][0-9]+[.][0-9]+')" \
+ && if [ "$installed" != "${CLAUDE_CLI_VERSION}" ]; then \
+      echo "CLI-Pin verletzt: installiert ${installed}, erwartet ${CLAUDE_CLI_VERSION}" >&2; \
+      exit 1; \
+    fi
+
+WORKDIR /work

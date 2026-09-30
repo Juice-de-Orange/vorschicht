@@ -1,0 +1,31 @@
+[Unit]
+Description=Vorschicht watchdog — container health and orchestrator heartbeat
+Documentation=https://github.com/Juice-de-Orange/vorschicht
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# The script exits non-zero when it finds a problem, which is information, not
+# a unit failure — systemd must not start backing the timer off because the
+# thing being watched is broken.
+SuccessExitStatus=0 1
+# /opt/vorschicht is the documented default stack directory. If the stack
+# lives elsewhere, install-host.sh writes a drop-in override
+# (vorschicht-watchdog.service.d/override.conf) that replaces both lines
+# rather than editing this checked-in unit.
+ExecStart=/opt/vorschicht/infra/scripts/watchdog.sh
+Environment=VORSCHICHT_STACK_DIR=/opt/vorschicht
+TimeoutStartSec=120
+
+# Least privilege: it needs the Docker socket and its own state directory,
+# nothing else.
+StateDirectory=vorschicht
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+ReadWritePaths=/var/lib/vorschicht
+
+[Install]
+WantedBy=multi-user.target

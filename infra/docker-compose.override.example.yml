@@ -1,0 +1,58 @@
+# =============================================================================
+# Production-host overlay — an example. Copy it to `docker-compose.override.yml`
+# (gitignored) and adjust the paths and limits to the host:
+#
+#   cp infra/docker-compose.override.example.yml infra/docker-compose.override.yml
+#   docker compose -f infra/docker-compose.yml -f infra/docker-compose.override.yml up -d
+#
+# A base file plus a host-specific overlay (A33). What changes here is only
+# what is genuinely host-specific — data lands on real paths under
+# /srv/vorschicht (override with VORSCHICHT_DATA_ROOT) so backups and restores
+# address something an operator can see, and the projects root is the host
+# directory the projects actually live in (VORSCHICHT_PROJECTS_ROOT, /opt by
+# default). The scripts under infra/scripts/ compose the stack with exactly
+# these two `-f` arguments.
+# =============================================================================
+services:
+  db:
+    volumes:
+      - ${VORSCHICHT_DATA_ROOT:-/srv/vorschicht}/postgres:/var/lib/postgresql/data
+
+  # §13's vault: the app writes uploads onto the docs volume, so it needs the
+  # same host path the orchestrator reads and the backup archives. Without this
+  # section the base file's *named* volume would win here while its two readers
+  # got the bind below — two filesystems, and every `document_versions` row
+  # pointing at bytes they cannot see. Wrong only on the target host, and
+  # invisible locally, which is why it is a section rather than a comment.
+  app:
+    volumes:
+      - ${VORSCHICHT_DATA_ROOT:-/srv/vorschicht}/docs:/data/docs
+
+  orchestrator:
+    volumes:
+      - ${VORSCHICHT_PROJECTS_ROOT:-/opt}:/projects:rw
+      - ${VORSCHICHT_DATA_ROOT:-/srv/vorschicht}/claude:/home/vorschicht/.claude
+      - ${VORSCHICHT_DATA_ROOT:-/srv/vorschicht}/transcripts:/data/transcripts
+      - ${VORSCHICHT_DATA_ROOT:-/srv/vorschicht}/docs:/data/docs
+      - ${VORSCHICHT_DATA_ROOT:-/srv/vorschicht}/worktrees:/data/worktrees
+    # Example limits for a shared host that carries other stacks; leave them
+    # room and size these to the machine.
+    deploy:
+      resources:
+        limits:
+          memory: 8g
+          cpus: '4.0'
+
+  backup:
+    volumes:
+      - ${VORSCHICHT_DATA_ROOT:-/srv/vorschicht}/backups:/backups
+      - ${VORSCHICHT_DATA_ROOT:-/srv/vorschicht}/transcripts:/data/transcripts:ro
+      - ${VORSCHICHT_DATA_ROOT:-/srv/vorschicht}/docs:/data/docs:ro
+
+volumes:
+  postgres-data: null
+  claude-auth: null
+  transcripts: null
+  docs: null
+  worktrees: null
+  backups: null

@@ -1,0 +1,13 @@
+[Unit]
+Description=Run the Vorschicht watchdog every 2 minutes (§18.1, A23)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+AccuracySec=15s
+# No randomised delay: the exit gate measures "alert within ≤ 2 timer
+# intervals", and jitter would make that unmeasurable.
+Unit=vorschicht-watchdog.service
+
+[Install]
+WantedBy=timers.target

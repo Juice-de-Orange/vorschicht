@@ -1,0 +1,108 @@
+{
+  "hinweis": "Das Leistungsbudget der Oberfläche (§22 Phase 7). Die Begründung jeder Zahl steht in docs/leistungsbudget.md; check-leistungsbudget.mjs prüft, dass beide Dateien dieselben Zahlen nennen, und schlägt fehl, wenn eine ohne die andere geändert wurde.",
+  "stand": "2026-08-18",
+  "festgelegt_bei_commit": "8e88378",
+  "bundle": {
+    "hinweis": "Gemessen über apps/web/dist nach `vite build`. Quellkarten (*.map) zählen nicht mit: ein Browser holt sie nur, wenn die Entwicklerwerkzeuge offen sind.",
+    "positionen": [
+      {
+        "id": "js-uebertragung",
+        "titel": "JavaScript, übertragen (gzip)",
+        "einheit": "byte",
+        "richtung": "hoechstens",
+        "grenze": 135000,
+        "gemessen_bei_festlegung": 121825
+      },
+      {
+        "id": "js-roh",
+        "titel": "JavaScript, roh (Parsen und Übersetzen)",
+        "einheit": "byte",
+        "richtung": "hoechstens",
+        "grenze": 450000,
+        "gemessen_bei_festlegung": 402715
+      },
+      {
+        "id": "css-uebertragung",
+        "titel": "CSS, übertragen (gzip)",
+        "einheit": "byte",
+        "richtung": "hoechstens",
+        "grenze": 8000,
+        "gemessen_bei_festlegung": 3298
+      },
+      {
+        "id": "schriften",
+        "titel": "Schriften, übertragen",
+        "einheit": "byte",
+        "richtung": "hoechstens",
+        "grenze": 32000,
+        "gemessen_bei_festlegung": 15928
+      },
+      {
+        "id": "symbole",
+        "titel": "Symbole der PWA, übertragen",
+        "einheit": "byte",
+        "richtung": "hoechstens",
+        "grenze": 12000
+      },
+      {
+        "id": "uebertragung-gesamt",
+        "titel": "Übertragung gesamt",
+        "einheit": "byte",
+        "richtung": "hoechstens",
+        "grenze": 170000,
+        "gemessen_bei_festlegung": 141529
+      }
+    ]
+  },
+  "lighthouse": {
+    "hinweis": "Gegen den gebauten Bundle aus `vite preview`, im gedrosselten Mobilprofil (Lighthouse-Standard: 1,6 Mbit/s, 150 ms RTT, CPU-Verlangsamung 4×), drei Läufe, gewertet wird der Median. Alle vier Grenzen sind veröffentlichte Schwellen und keine hier gewählten Zahlen: 90 ist Lighthouses eigene Grenze zwischen Grün und Orange, LCP 2500 ms und CLS 0,1 sind die Core-Web-Vitals-Schwelle für „gut\", TBT 300 ms ist Lighthouses Schwelle für „gut\".",
+    "positionen": [
+      {
+        "id": "leistungswert",
+        "titel": "Leistungswert",
+        "einheit": "punkte",
+        "richtung": "mindestens",
+        "grenze": 90,
+        "gemessen_bei_festlegung": 97
+      },
+      {
+        "id": "lcp",
+        "titel": "Grösste inhaltliche Anzeige (LCP)",
+        "einheit": "millisekunden",
+        "richtung": "hoechstens",
+        "grenze": 2500,
+        "gemessen_bei_festlegung": 1960
+      },
+      {
+        "id": "tbt",
+        "titel": "Gesamte Blockierzeit (TBT)",
+        "einheit": "millisekunden",
+        "richtung": "hoechstens",
+        "grenze": 300,
+        "gemessen_bei_festlegung": 86
+      },
+      {
+        "id": "cls",
+        "titel": "Verschiebung des Layouts (CLS)",
+        "einheit": "zahl",
+        "richtung": "hoechstens",
+        "grenze": 0.1,
+        "gemessen_bei_festlegung": 0.061
+      }
+    ]
+  },
+  "kaltstart": {
+    "hinweis": "§22 Phase 7: „Cold load of the overview < 2s over a throttled mobile profile against the VPS\". Die Grenze steht in §22 und ist hier abgeschrieben, nicht gewählt — sie zu ändern wäre eine Änderung an CLAUDE.md.",
+    "ziel": "https://vorschicht.example.com/",
+    "positionen": [
+      {
+        "id": "kaltstart",
+        "titel": "Kaltstart der Übersicht gegen den VPS",
+        "einheit": "millisekunden",
+        "richtung": "hoechstens",
+        "grenze": 2000,
+        "gemessen_bei_festlegung": 1856
+      }
+    ]
+  }
+}

@@ -1,0 +1,278 @@
+# =============================================================================
+# Vorschicht stack (§3).
+#
+# Base file — runs standalone on any machine with Docker. The production host
+# adds `docker-compose.override.yml` on top (copied and adapted from
+# `docker-compose.override.example.yml`): a base file plus a host-specific
+# overlay (A33).
+#
+# Two things here are not cosmetic:
+#
+#   * **Watchtower exclusion (A34).** The production host runs watchtower nightly
+#     across every container with rolling restarts. Without this label it would
+#     replace the pinned Claude CLI — the runtime of an autonomous system —
+#     unattended and without a changelog. Every service carries the label.
+#   * **No published database port.** §3 says the database is internal only.
+#     The app and orchestrator reach it over the compose network; nothing else
+#     can reach it at all.
+# =============================================================================
+name: vorschicht
+
+x-watchtower-excluded: &watchtower-excluded
+  com.centurylinklabs.watchtower.enable: 'false'
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '5'
+
+services:
+  db:
+    image: postgres:16-alpine@sha256:4e6e670bb069649261c9c18031f0aded7bb249a5b6664ddec29c013a89310d50
+    restart: unless-stopped
+    labels: *watchtower-excluded
+    logging: *logging
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-vorschicht}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD fehlt — siehe .env.example}
+      POSTGRES_DB: ${POSTGRES_DB:-vorschicht}
+      # Deterministic collation regardless of host locale, so index ordering
+      # cannot differ between the build machine and the production host.
+      POSTGRES_INITDB_ARGS: '--locale=C --encoding=UTF8'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-vorschicht} -d ${POSTGRES_DB:-vorschicht}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+          cpus: '2.0'
+
+  # ===========================================================================
+  # db-test — the database §11's `test` gate runs against, and nothing else.
+  #
+  # A gate command runs in the orchestrator container, which has no docker (the
+  # socket is refused above the reason in Dockerfile.orchestrator), so
+  # `with-test-db.sh` cannot start its own throwaway Postgres there. Its
+  # short-circuit path exists for exactly this — "a machine that has a Postgres
+  # but no docker client" — and takes VORSCHICHT_TEST_DB_URL as it stands.
+  #
+  # **A separate server rather than a second database on `db`**, and that is the
+  # whole point of these twenty lines. The URL is handed in as an *admin* URL:
+  # integration tests create their own database beside it, and `e2e/global-setup`
+  # reads the same variable as "the throwaway database" and **migrates** it
+  # (A129 is the story of that double meaning breaking something). Pointing any
+  # of that at the server holding the event log — which §18 keeps forever and
+  # never deletes — is a risk with no upside.
+  #
+  # tmpfs, so nothing survives a restart and nothing grows on the disk the A30
+  # watcher is measuring. No published port, no volume, its own password: this
+  # server holds nothing that is not about to be thrown away.
+  # ===========================================================================
+  db-test:
+    image: postgres:16-alpine@sha256:4e6e670bb069649261c9c18031f0aded7bb249a5b6664ddec29c013a89310d50
+    restart: unless-stopped
+    labels: *watchtower-excluded
+    logging: *logging
+    environment:
+      POSTGRES_USER: testdb
+      # Not a secret: no published port, internal network only, and every byte
+      # in here is a fixture. The same literal `with-test-db.sh` uses when it
+      # owns the container, so the two paths cannot differ by accident.
+      POSTGRES_PASSWORD: testdb-local-only
+      POSTGRES_DB: testdb
+      POSTGRES_INITDB_ARGS: '--locale=C --encoding=UTF8'
+    tmpfs:
+      - /var/lib/postgresql/data:size=512m
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U testdb -d testdb']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: '1.0'
+
+  app:
+    build:
+      context: ..
+      dockerfile: infra/docker/Dockerfile.app
+    restart: unless-stopped
+    labels: *watchtower-excluded
+    logging: *logging
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://${POSTGRES_USER:-vorschicht}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-vorschicht}
+      APP_BIND: 0.0.0.0
+      APP_PORT: 8420
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN}
+      WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID}
+      WEBAUTHN_RP_NAME: ${WEBAUTHN_RP_NAME:-Vorschicht}
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET fehlt}
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
+      CLAUDE_CLI_VERSION: ${CLAUDE_CLI_VERSION:-2.1.220}
+      NTFY_SERVER: ${NTFY_SERVER}
+      NTFY_TOKEN: ${NTFY_TOKEN}
+      # §13's vault writes here. Named explicitly rather than inherited from
+      # VORSCHICHT_DATA_ROOT: the app mounts *only* this one of the four data
+      # directories, and setting a data root would have it derive three more
+      # paths that are not mounted — a configuration that reads as if they were.
+      VORSCHICHT_DOCS_ROOT: /data/docs
+      TZ: ${TZ:-Europe/Vienna}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    # APP_BIND is 0.0.0.0 *inside* the container; the published port binds to
+    # loopback on the host, so nginx remains the only public entry (A1).
+    ports:
+      - '127.0.0.1:${APP_PORT:-8420}:8420'
+    volumes:
+      # §13: "binary stored on the docs volume". The only mount this service
+      # gets, and the only thing it may write outside its tmpfs — §19 asks for a
+      # reason per mount, and this is it: the upload route streams the bytes to
+      # disk here before writing the row that points at them.
+      #
+      # The same volume the orchestrator mounts (docs.search, §6.6's leak scan)
+      # and the backup sidecar tars (§18, A14). All three have to be the *same*
+      # filesystem, which is why `docker-compose.override.yml` carries an `app`
+      # section too: that overlay replaces this named volume with a host bind,
+      # and a service mounting only one of the two would store uploads where the
+      # vault's readers and the backup cannot see them.
+      #
+      # Writable despite `read_only: true` — that flag covers the container's
+      # own filesystem, not volumes mounted into it. Every service in this stack
+      # runs as uid 10001, so the ownership trap A58.2 and A103 both landed in
+      # does not arise here.
+      - docs:/data/docs
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: '1.0'
+
+  orchestrator:
+    build:
+      context: ..
+      dockerfile: infra/docker/Dockerfile.orchestrator
+      args:
+        CLAUDE_CLI_VERSION: ${CLAUDE_CLI_VERSION:-2.1.220}
+    restart: unless-stopped
+    # Long enough for §7.3's wrap-up: on SIGTERM the daemon asks its live
+    # sessions to stop and parks their work, which turns a routine rollout from
+    # "one Debugger session per in-flight task" (§7.2's re-check, on every
+    # deploy) into nothing at all. Docker's default 10s would land SIGKILL in
+    # the middle of that; the daemon's own budget is 20s.
+    stop_grace_period: 30s
+    labels: *watchtower-excluded
+    logging: *logging
+    depends_on:
+      db:
+        condition: service_healthy
+      db-test:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://${POSTGRES_USER:-vorschicht}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-vorschicht}
+      # §11's `test` gate, and deliberately a different server from DATABASE_URL
+      # above. `with-test-db.sh` takes this as it stands (its short-circuit path
+      # for "a Postgres but no docker client"), integration tests treat it as an
+      # *admin* URL and create databases beside it, and `e2e/global-setup`
+      # migrates whatever it points at — none of which may ever reach the event
+      # log. The name is VORSCHICHT_TEST_DB_URL and not TEST_DATABASE_URL on
+      # purpose: the latter is what the tests themselves read, and exporting it
+      # process-wide would make the deliberately docker-free unit step run the
+      # integration suite too (A61's separation, measured to break things).
+      VORSCHICHT_TEST_DB_URL: postgres://testdb:testdb-local-only@db-test:5432/testdb
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN}
+      WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID}
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET fehlt}
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:?CLAUDE_CODE_OAUTH_TOKEN fehlt — claude setup-token}
+      CLAUDE_CLI_VERSION: ${CLAUDE_CLI_VERSION:-2.1.220}
+      VORSCHICHT_PROJECTS_ROOT: /projects
+      VORSCHICHT_DATA_ROOT: /data
+      NTFY_SERVER: ${NTFY_SERVER}
+      NTFY_TOKEN: ${NTFY_TOKEN}
+      PLAN_PROFILE: ${PLAN_PROFILE:-max_20x}
+      TZ: ${TZ:-Europe/Vienna}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      # The only service that may write to project working directories (§6.6).
+      - ${VORSCHICHT_PROJECTS_ROOT:-./.vorschicht-data/projects}:/projects:rw
+      - claude-auth:/home/vorschicht/.claude
+      - transcripts:/data/transcripts
+      - docs:/data/docs
+      # Task worktrees (§10). Deliberately not in the backup: the commits live
+      # in the project repositories, so this volume is a cache of checkouts.
+      - worktrees:/data/worktrees
+      # §18: "Backup success/failure events → Ops tile + ntfy on failure."
+      # Read-only, and read-only is the whole arrangement: the sidecar has no
+      # ntfy credentials and must not write to the event log itself (that is
+      # `EventLog.append`'s job and it is the only sanctioned way in), so it
+      # leaves `.last-result` here and the daemon reports it. This mount is the
+      # path `VORSCHICHT_BACKUP_RESULT` defaults to; the two have to agree.
+      - backups:/backups:ro
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 6g
+          cpus: '4.0'
+
+  backup:
+    build:
+      context: ..
+      dockerfile: infra/docker/Dockerfile.backup
+    restart: unless-stopped
+    labels: *watchtower-excluded
+    logging: *logging
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER:-vorschicht}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB:-vorschicht}
+      # §18/A14: nightly 02:30, 14 daily + 8 weekly, transcripts included so
+      # traceability survives a disk loss.
+      BACKUP_CRON: ${BACKUP_CRON:-30 2 * * *}
+      BACKUP_KEEP_DAILY: '14'
+      BACKUP_KEEP_WEEKLY: '8'
+      TZ: ${TZ:-Europe/Vienna}
+    volumes:
+      - backups:/backups
+      - transcripts:/data/transcripts:ro
+      - docs:/data/docs:ro
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: '1.0'
+
+volumes:
+  postgres-data:
+  claude-auth:
+  transcripts:
+  docs:
+  worktrees:
+  backups:

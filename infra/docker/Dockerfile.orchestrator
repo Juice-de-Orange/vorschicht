@@ -1,0 +1,258 @@
+# =============================================================================
+# orchestrator — daemon, workers, and the Claude Code CLI (§3, §6).
+#
+# The CLI version is a build argument and is asserted at build time: if the
+# installer ever hands back a different version, the build fails here rather
+# than the runner behaving differently at 3am. Combined with the watchtower
+# exclusion label in compose (A34), that is what makes "pinned" mean pinned.
+# =============================================================================
+ARG NODE_IMAGE=node:22-bookworm-slim@sha256:f32b81066cde10a75dbac96646099533316d94bac4150c55da1636e1f0ffdc46
+
+# One declaration for both stages. Two literals would be one edit away from two
+# pnpm versions deciding the same gates on the same host — A104.6's rule, and
+# the reason `pnpm` is in the runtime stage at all is one directory below.
+ARG PNPM_VERSION=11.1.2
+
+# --- build -------------------------------------------------------------------
+FROM ${NODE_IMAGE} AS build
+WORKDIR /build
+
+# CI=true makes pnpm non-interactive: without it `pnpm deploy` asks before
+# rebuilding the modules directory and aborts outright when there is no TTY.
+ARG PNPM_VERSION
+ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH CI=true
+RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/shared/package.json packages/shared/
+COPY packages/db/package.json packages/db/
+COPY packages/core/package.json packages/core/
+COPY packages/mcp/package.json packages/mcp/
+COPY apps/server/package.json apps/server/
+COPY apps/orchestrator/package.json apps/orchestrator/
+COPY apps/web/package.json apps/web/
+RUN pnpm install --frozen-lockfile
+
+COPY . .
+RUN pnpm --filter @vorschicht/orchestrator... --if-present build \
+ && pnpm deploy --filter @vorschicht/orchestrator --prod --legacy /out/orchestrator
+
+# --- runtime -----------------------------------------------------------------
+FROM ${NODE_IMAGE} AS runtime
+WORKDIR /app
+
+# Exact CLI version. ≥ 2.1.214 is required by A27 (stream-json exit-drain fix).
+ARG CLAUDE_CLI_VERSION=2.1.220
+
+# gitleaks, pinned by version *and* SHA-256 — §11's baseline gate 4.
+#
+# The values are mirrored in `packages/core/src/secret-scan.ts` and
+# `gitleaks-pin.test.ts` fails the build when the two drift, so the tool that
+# decides a locked gate is one version everywhere rather than one per machine.
+ARG GITLEAKS_VERSION=8.30.1
+ARG GITLEAKS_SHA256=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      ca-certificates curl git openssh-client ripgrep tini \
+ && rm -rf /var/lib/apt/lists/*
+
+# =============================================================================
+# The secrets scanner, in the image rather than through a docker socket.
+#
+# §11 locks "secrets scan clean" as baseline gate 4 and it had exactly one
+# implementation: `docker run zricethezav/gitleaks`. This image ships no docker
+# client and the compose stack mounts no socket, so in the **deployed** studio
+# that gate answered `infra` every single time — three retries, an Ops alert
+# (A25), task back in `queued`. The gate had been demonstrated green, on a
+# laptop where docker happens to exist. No merge could ever have completed here.
+#
+# **The docker socket is refused, and that is the decision worth recording.**
+# Mounting `/var/run/docker.sock` would fix the gate with no new code at all,
+# and it would hand every agent session a path to root on the production host: a container
+# that can talk to the daemon can start a privileged one that mounts `/`. §19
+# runs these sessions as an unprivileged user with `no-new-privileges` for
+# precisely that reason, and A34 already treats the daemon as something this
+# stack must not be able to reprogram. 23 MB in the image is the cheaper price.
+#
+# Pinned by SHA-256 the way supercronic is in Dockerfile.backup, and for the
+# stronger version of that file's reason: this binary decides whether a
+# credential reaches a repository. The hash is upstream's own — it is the line
+# for `linux_x64` in `gitleaks_${GITLEAKS_VERSION}_checksums.txt`, confirmed
+# against a separate download — so it states what upstream published rather than
+# what one machine happened to receive. What it cannot do is outlive a
+# compromise of the release page itself; that is the same trust the CLI install
+# above already makes, and naming it is better than implying more.
+#
+# The version assertion strips a leading `v`: the release tarball's binary
+# answers `8.30.1` and the same version out of the container image answers
+# `v8.30.1` (both measured). An unanchored `grep` would paper over that and also
+# accept `8.30.10` — blunt rather than wrong, and blunt is harder to notice.
+# =============================================================================
+RUN set -eux; \
+    curl -fsSL -o /tmp/gitleaks.tar.gz \
+      "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"; \
+    echo "${GITLEAKS_SHA256}  /tmp/gitleaks.tar.gz" | sha256sum -c -; \
+    tar -xzf /tmp/gitleaks.tar.gz -C /usr/local/bin gitleaks; \
+    rm -f /tmp/gitleaks.tar.gz; \
+    chmod 0755 /usr/local/bin/gitleaks; \
+    installed="$(gitleaks version | tr -d 'v[:space:]')"; \
+    if [ "$installed" != "${GITLEAKS_VERSION}" ]; then \
+      echo "gitleaks-Pin verletzt: installiert ${installed}, erwartet ${GITLEAKS_VERSION}" >&2; \
+      exit 1; \
+    fi
+
+# =============================================================================
+# pnpm, in the runtime image and not only in the build stage.
+#
+# §11's four command gates run whatever `projects.gate_config` names, in *this*
+# container (`new GateSuite` has exactly one production call site, in the
+# orchestrator's main.ts). Vorschicht's own configuration names `pnpm` in all
+# four (onboarding/self.ts), and `corepack enable` above lives in the build
+# stage, so the deployed runtime had node, npm and corepack — and no `pnpm`.
+#
+# The consequence is worse than the missing gitleaks below, and that is why it
+# is worth the paragraph. Measured against this image with gate-suite's own
+# `run()` semantics: `typecheck`, `lint` and `build` fail to spawn (ENOENT →
+# verdict `infra`, A25), while `test` *does* start — `with-test-db.sh` is bash
+# and bash is here — and exits 2 with "docker nicht erreichbar", which A50
+# makes a **finding**. Merge-queue takes the infra branch only when there are
+# no findings, so that single finding outvotes the three infra results: the
+# candidate goes red on its first attempt, §9 requeues it with a learnings note
+# reading "docker nicht erreichbar", the next Coder gets a machine fault handed
+# to it as a fix assignment (A69.5), and the second red escalates to the operator with a
+# cause that is not the cause. A25's protection is switched off exactly here.
+#
+# It was invisible because A85 holds the only project `read_only`, so the chain
+# never touched it. A104 is the same class one tool over, with the same verdict
+# ("no merge could ever have completed here"), and its answer was the same:
+# put the tool in the image. `gate-programme.test.ts` is the guard that keeps
+# this one from coming back — it asserts that every programme a stored gate
+# configuration names is present here.
+#
+# **Not corepack**, and that is the second thing this block had to learn.
+# `corepack enable && corepack prepare pnpm@X --activate` looks right, builds
+# green, and ships the wrong pnpm: `--activate` writes into the *building*
+# user's COREPACK_HOME, which is root's, so as uid 10001 the shim falls back to
+# its own built-in default. Measured on the image built exactly that way —
+# `pnpm --version` answered **11.25.0** against a pin of 11.1.2, and preceded it
+# with `Corepack is about to download …`, i.e. a gate command that reaches for
+# the npm registry at run time. An unreachable registry would then be an
+# `infra` verdict for a reason nobody could see in the Dockerfile.
+#
+# `npm install -g` puts a real binary in /usr/local/bin: same version for every
+# user, no HOME dependency, no download, and it ignores a `packageManager` field
+# in whatever repository the gate happens to be checking — which is right, since
+# the image decides its own toolchain and an onboarded project must not be able
+# to pull a different pnpm into the studio.
+#
+# Asserted twice on purpose: once here as root, and once after the USER switch
+# below, because "installed" and "what the daemon's user gets" are two facts and
+# this block exists because they were once different.
+# =============================================================================
+ARG PNPM_VERSION
+RUN set -eux; \
+    npm install -g "pnpm@${PNPM_VERSION}"; \
+    installed="$(pnpm --version)"; \
+    if [ "$installed" != "${PNPM_VERSION}" ]; then \
+      echo "pnpm-Pin verletzt: installiert ${installed}, erwartet ${PNPM_VERSION}" >&2; \
+      exit 1; \
+    fi
+
+RUN groupadd --gid 10001 vorschicht \
+ && useradd --uid 10001 --gid 10001 --create-home --home-dir /home/vorschicht \
+      --shell /bin/bash vorschicht
+
+# Every directory the daemon writes under /data, created here as root and handed
+# to 10001 — including the three that are named volumes at runtime.
+#
+# That last part is the whole point and it was missed once. Docker seeds a
+# *fresh* named volume from whatever the image has at the mount point, ownership
+# included; where the image has nothing, it creates the mount point as
+# **root:root**. Only `/data/runs` existed here, so `transcripts`, `docs` and
+# `worktrees` came up root-owned and unwritable by the daemon — which meant
+# §6.2's transcript copy failed on every run (a warning in a log nobody reads,
+# and §18's traceability chain quietly empty) and `WorktreeManager.ensure()`
+# could not create a single worktree, i.e. no dev-chain task could ever have
+# run. Found by starting the wired daemon and reading its first EACCES (A58).
+#
+# An *existing* volume keeps its ownership, so this fixes new installations
+# only; `assertWritablePaths` refuses to start on the others and says what to
+# run. See docs/OPERATIONS.md.
+RUN mkdir -p /data/runs /data/transcripts /data/docs /data/worktrees \
+ && chown -R 10001:10001 /data
+
+# The per-role `--settings` files (§6.2) carrying the §6.6 containment hooks.
+# Created here, as root, because `WORKDIR /app` above made /app root-owned and
+# the daemon runs as 10001: it writes these files at start-up and refuses to
+# take work if it cannot, so an unwritable directory would be a restart loop.
+RUN mkdir -p /app/claude && chown -R 10001:10001 /app/claude
+
+# Install as the unprivileged user: agent sessions run as this user (§19), and
+# the CLI keeps its runtime under $HOME.
+USER 10001:10001
+ENV HOME=/home/vorschicht PATH=/home/vorschicht/.local/bin:$PATH
+RUN curl -fsSL https://claude.ai/install.sh | bash -s "${CLAUDE_CLI_VERSION}" \
+ && installed="$(claude --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')" \
+ && if [ "$installed" != "${CLAUDE_CLI_VERSION}" ]; then \
+      echo "CLI-Pin verletzt: installiert ${installed}, erwartet ${CLAUDE_CLI_VERSION}" >&2; \
+      exit 1; \
+    fi
+
+# Agent commits are authored as the bot, never as the operator (§2, A20/A36).
+# The same question as root answered above, asked again as the user that will
+# actually spawn the gate commands. It is not a formality: the corepack version
+# of this block passed the first assertion and failed this one.
+RUN set -eux; \
+    installed="$(pnpm --version)"; \
+    if [ "$installed" != "${PNPM_VERSION}" ]; then \
+      echo "pnpm-Pin verletzt fuer uid 10001: ${installed}, erwartet ${PNPM_VERSION}" >&2; \
+      exit 1; \
+    fi
+
+RUN git config --global user.name  "Vorschicht Bot" \
+ && git config --global user.email "vorschicht-bot@example.com" \
+ && git config --global init.defaultBranch main \
+ && git config --global --add safe.directory '*'
+
+COPY --from=build --chown=10001:10001 /out/orchestrator /app
+# §6.3's checked-in result contracts. The runner generates the schema it sends
+# from zod (ADR 0002 — `--json-schema` takes JSON, not a path), so these are
+# carried for inspection: a container that holds the contract it enforces is
+# worth the six small files when something has to be diagnosed from inside it.
+COPY --from=build --chown=10001:10001 /build/contracts /app/contracts
+# §6.6's nightly transcript scan runs gitleaks over a directory that is not a
+# git tree, so there is no config for it to discover (A104.5, A105). The rules
+# have to arrive with the image or the scan runs on gitleaks' defaults — which
+# A104's mutation M2 measured: a `sk-ant-oat` token in a transcript goes
+# **undetected**. One file, and without it the whole scan is theatre.
+COPY --from=build --chown=10001:10001 /build/.gitleaks.toml /app/.gitleaks.toml
+
+ENV NODE_ENV=production CLAUDE_CLI_VERSION=${CLAUDE_CLI_VERSION} \
+    VORSCHICHT_MCP_SERVER=/app/node_modules/@vorschicht/mcp/dist/main.js \
+    VORSCHICHT_HOOK_ENTRY=/app/node_modules/@vorschicht/core/dist/hook-entry.js
+
+# The MCP server is spawned by the CLI per session and its absence is silent:
+# the session simply starts without the tools it was granted and reports that it
+# can do nothing. `pnpm deploy` decides that path, so it is asserted at build
+# time rather than discovered at 3am.
+RUN test -f "$VORSCHICHT_MCP_SERVER" \
+ || ( echo "MCP-Server fehlt unter $VORSCHICHT_MCP_SERVER" >&2; exit 1 )
+
+# The §6.6 containment hook, spawned by the CLI on every tool call. Missing it
+# is worse than missing the MCP server: the daemon writes the role settings from
+# this path at start-up, the CLI reports the hook as errored, and an errored
+# PreToolUse hook lets the tool run. Asserted here so an image that lost it
+# never starts a night of uncontained sessions.
+RUN test -f "$VORSCHICHT_HOOK_ENTRY" \
+ || ( echo "Containment-Hook fehlt unter $VORSCHICHT_HOOK_ENTRY" >&2; exit 1 )
+
+# tini reaps the process trees that agent sessions spawn. Without it, killed
+# tool subprocesses become zombies inside a long-lived daemon container.
+ENTRYPOINT ["/usr/bin/tini", "--"]
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+  CMD test -f /tmp/vorschicht-heartbeat \
+   && [ $(( $(date +%s) - $(stat -c %Y /tmp/vorschicht-heartbeat) )) -lt 120 ]
+
+CMD ["node", "dist/main.js"]

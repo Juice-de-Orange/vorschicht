@@ -1,0 +1,75 @@
+# =============================================================================
+# backup — scheduled pg_dump + volume archives (§18, A14).
+#
+# supercronic rather than a sleep loop, because the schedule is 02:30
+# Europe/Vienna and that zone has DST. A loop that sleeps a fixed interval
+# drifts by an hour twice a year and, worse, does so silently — the same class
+# of bug §16 makes us write an explicit DST test for.
+#
+# The binary is pinned by version *and* SHA-256. An unverified download baked
+# into the image that guards the operator's only copy of the event log would be an odd
+# place to start trusting the internet.
+# =============================================================================
+ARG POSTGRES_IMAGE=postgres:16-alpine@sha256:4e6e670bb069649261c9c18031f0aded7bb249a5b6664ddec29c013a89310d50
+FROM ${POSTGRES_IMAGE}
+
+ARG SUPERCRONIC_VERSION=v0.2.33
+ARG SUPERCRONIC_SHA256=feefa310da569c81b99e1027b86b27b51e6ee9ab647747b49099645120cfc671
+
+RUN set -eux; \
+    apk add --no-cache --virtual .fetch curl; \
+    curl -fsSL -o /usr/local/bin/supercronic \
+      "https://github.com/aptible/supercronic/releases/download/${SUPERCRONIC_VERSION}/supercronic-linux-amd64"; \
+    echo "${SUPERCRONIC_SHA256}  /usr/local/bin/supercronic" | sha256sum -c -; \
+    chmod +x /usr/local/bin/supercronic; \
+    apk del .fetch; \
+    apk add --no-cache tzdata
+
+COPY --chmod=0755 infra/scripts/backup-run.sh /usr/local/bin/backup-run.sh
+COPY --chmod=0755 infra/docker/backup-entrypoint.sh /usr/local/bin/backup-entrypoint.sh
+
+# The sidecar runs as 10001, the uid that owns the volumes it copies — not as
+# the `postgres` user (uid 70) this image ships and this service used until now.
+#
+# That was not a hardening detail, it was the one thing this container exists to
+# do. `/data/transcripts` is written by the orchestrator as uid 10001, and the
+# archived files carry mode 0600 because `copyFile` inherits the mode of the
+# CLI's own transcript file — so uid 70 could not read a single one. `tar`
+# created the archive, failed on the first entry, and `backup-run.sh` aborted
+# *after* `pg_dump` had already succeeded. Observed on the production host: one 130-byte
+# `transcripts-*.tar.gz` per night since 2026-08-03, no `.last-run` (it is
+# written last), therefore a permanently red healthcheck and a watchdog alerting
+# every two minutes for seven days — and A14's promise that the transcripts are
+# in the backup never once kept. It could not have been noticed earlier: before
+# 2026-08-02 the transcripts volume was empty (A58.2), so there was nothing
+# unreadable to fail on.
+#
+# Fixed by identity rather than by mode. The mode belongs to the CLI's file and
+# would have to be changed at every copy site; the uid is one line here. Nothing
+# else in this container cares: `pg_dump`/`pg_restore` authenticate through the
+# `PG*` variables compose sets and need no particular local user, and supercronic
+# reads a crontab from /tmp and writes only to stdout.
+#
+# `/backups` is created and handed over here rather than left to `WORKDIR`,
+# for the reason Dockerfile.orchestrator gives at length: docker seeds a *fresh*
+# named volume from what the image has at the mount point, ownership included.
+# An **existing** volume keeps the ownership it was created with — so an
+# installation that already ran this sidecar as uid 70 needs a one-time chown.
+# See docs/OPERATIONS.md.
+RUN addgroup -g 10001 vorschicht \
+ && adduser -u 10001 -G vorschicht -D -h /home/vorschicht vorschicht \
+ && mkdir -p /backups \
+ && chown 10001:10001 /backups
+
+USER 10001:10001
+ENV HOME=/home/vorschicht
+WORKDIR /backups
+
+# Healthy means "the scheduler is alive and a backup ran recently enough".
+# A sidecar that is merely running but has silently stopped producing dumps is
+# the failure mode worth catching — an untested backup does not count (§18).
+HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
+  CMD test -f /backups/.last-run \
+   && [ $(( $(date +%s) - $(stat -c %Y /backups/.last-run) )) -lt 172800 ]
+
+ENTRYPOINT ["/usr/local/bin/backup-entrypoint.sh"]
