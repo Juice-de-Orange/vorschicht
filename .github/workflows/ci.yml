@@ -88,7 +88,7 @@ jobs:
           git config --global init.defaultBranch main
           # The onboarding self-survey reads the integration branch from
           # `refs/remotes/origin/HEAD`, which actions/checkout does not create.
-          git remote set-head origin -a
+          git remote set-head origin main
 
       - run: pnpm install --frozen-lockfile
 
