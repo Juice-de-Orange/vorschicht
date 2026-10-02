@@ -7,3 +7,8 @@ packages:
 # code just because a transitive dependency asked nicely.
 allowBuilds:
   esbuild: true
+
+# Minimum versions for transitive dependencies with known advisories (Dependabot / pnpm audit).
+overrides:
+  "fast-uri@<3.1.7": "^3.1.7"
+  "nanoid@<3.3.18": "^3.3.18"
