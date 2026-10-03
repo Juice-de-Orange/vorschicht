@@ -39,9 +39,10 @@ CRONTAB=/tmp/vorschicht.cron
 if ! ( : > /backups/.write-probe ) 2>/dev/null; then
   echo "backup: /backups ist für uid $(id -u) nicht beschreibbar — kein Lauf wird" >&2
   echo 'gestartet, weil sonst pg_dump scheitert und der Fehler nach einem' >&2
-  echo 'Datenbankproblem aussieht. Einmalig auf dem Host (siehe docs/OPERATIONS.md):' >&2
-  echo '  docker compose run --rm --user root --entrypoint chown backup \' >&2
-  echo '    -R 10001:10001 /backups' >&2
+  echo 'Datenbankproblem aussieht. Einmalig auf dem Host, im Stack-Verzeichnis' >&2
+  echo '(mit Override-Datei zusätzlich deren -f; siehe docs/OPERATIONS.md):' >&2
+  echo '  docker compose -f infra/docker-compose.yml --env-file .env \' >&2
+  echo '    run --rm --user root --entrypoint chown backup -R 10001:10001 /backups' >&2
   exit 1
 fi
 rm -f /backups/.write-probe

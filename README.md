@@ -129,6 +129,13 @@ the onboarding analysis (§20): `infra/scripts/onboard-remote.sh` on the host th
 subscription** and spends its budget. The procedure is in
 [`docs/OPERATIONS.md`](docs/OPERATIONS.md#first-project-onboarding-20).
 
+Know before you run it: that procedure was read off the scripts and **has not been executed end to
+end in the published state** of this repository. The remote script assumes the host layout of the
+override file (`/srv/vorschicht/transcripts`) and passwordless `sudo` for filing the session
+transcript there; it builds the gate image on first use (minutes) and, if the stack checkout has no
+build yet, runs `pnpm install` and the build inside it. Applying a proposal needs `--actor <name>` —
+there is no default — and a refused `--apply-lauf` exits 2.
+
 **Account prerequisite (do this once):** in your Anthropic account, usage credits / extra usage must
 be **disabled or capped at 0**. Vorschicht refuses to start if `ANTHROPIC_API_KEY` is set at all, but
 only the account setting covers the account. Anthropic has announced, paused and promised to rework

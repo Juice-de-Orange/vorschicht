@@ -1197,8 +1197,18 @@ async function main(): Promise<void> {
         },
         wrapUp,
         notifier,
-        appendEvent: async (kind, reasons) => {
-          await eventLog.append({ kind, actor: 'system', payload: { reasons } });
+        appendEvent: async (kind, reasons, alert) => {
+          // `announced` as in `disk.checked`: whether the operator was told, on
+          // the row that says what he would have been told about.
+          await eventLog.append({
+            kind,
+            actor: 'system',
+            payload: {
+              reasons,
+              announced: alert.announced,
+              ...(alert.error === null ? {} : { alertError: alert.error }),
+            },
+          });
         },
         // §8.2's `post_auth_incident`. The trigger had no producer at all —
         // `requestAudit` was called by nothing outside a test, so two of the

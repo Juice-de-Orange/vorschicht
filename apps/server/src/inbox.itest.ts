@@ -278,6 +278,40 @@ describe.skipIf(!url)('Posteingang gegen echte Daten (§15)', () => {
   });
 
   /**
+   * §6.1 auf der Übersicht, gegen echte Zeilen: die Form, in der der Daemon den
+   * Vorfall schreibt (`main.ts`: `reasons`, `announced`, `alertError`), und die
+   * Uhr, die entscheidet, ob er noch läuft.
+   */
+  it('nennt einen laufenden Auth-Vorfall und lässt einen verstummten weg (§6.1)', async () => {
+    const übersicht = (jetzt?: number) =>
+      buildOverview({
+        sql,
+        currentSamples: async () => [],
+        openDecisions: async () => [],
+        ...(jetzt === undefined ? {} : { now: () => jetzt }),
+      });
+
+    expect((await übersicht()).authIncident).toBeNull();
+
+    await sql`
+      INSERT INTO event_log (kind, actor, payload)
+      VALUES ('auth.incident', 'system', ${sql.json({
+        reasons: ['Die Sitzung konnte sich nicht anmelden (§6.1).'],
+        announced: false,
+        alertError: 'fetch failed',
+      })})
+    `;
+
+    const vorfall = (await übersicht()).authIncident;
+    expect(vorfall?.text).toContain('Die Anmeldung bei Claude schlägt fehl');
+    expect(vorfall?.text).toContain('Die Sitzung konnte sich nicht anmelden');
+    expect(vorfall?.text).toContain('Der Alarm über ntfy kam nicht an');
+
+    // Eine Stunde später, ohne neue Meldung: der Daemon meldet ihn nicht mehr.
+    expect((await übersicht(Date.now() + 60 * 60_000)).authIncident).toBeNull();
+  });
+
+  /**
    * A44.3s dritte Art Stillstand, gegen echte Zeilen.
    *
    * Die Zusicherung, auf die es ankommt, ist die **Trennung**: eine Aufgabe auf

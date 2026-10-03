@@ -546,6 +546,27 @@ export const OVERVIEW_DEPLOY_LIMIT = 5;
  * Aufruf braucht, hat dieses Ziel schon verfehlt. Die einzige Ausnahme ist
  * `/healthz`, und die ist begründet — siehe `healthTileView`.
  */
+/**
+ * Ein laufender Auth-Vorfall (§6.1) auf der Übersicht, oder `null`.
+ *
+ * Während eines Vorfalls nimmt der Daemon keine Arbeit an und misst auch kein
+ * Budget — der Wächter sagt dann wahrheitsgemäss „Keine Budgetdaten", und das
+ * war bis hierher **alles**, was die Startseite sagte. Die Ursache stand im
+ * Log des Orchestrators und im Ereignisprotokoll, und der Container meldet
+ * sich währenddessen als `(healthy)`: §17.1s „null Klicks, um zu wissen, ob
+ * alles in Ordnung ist" traf für den einen Zustand nicht zu, in dem das Studio
+ * auf den Betreiber wartet.
+ *
+ * Der Satz ist deutsch und fertig (§2), wie `guardian.text` und die Kacheln.
+ */
+export const authIncidentView = z.object({
+  /** Wann der Daemon den Vorfall zuletzt gemeldet hat. ISO 8601. */
+  at: z.string(),
+  /** Deutsch, fertig zum Rendern: was los ist und was zu tun wäre. */
+  text: z.string(),
+});
+export type AuthIncidentView = z.infer<typeof authIncidentView>;
+
 export const overviewPayload = z.object({
   guardian: z.object({
     state: z.enum(GUARDIAN_STATES),
@@ -569,6 +590,8 @@ export const overviewPayload = z.object({
   deploys: z.array(overviewDeployView),
   /** §17.1s Gesundheitskacheln (§18). Siehe `healthTileView`. */
   health: z.array(healthTileView),
+  /** §6.1: der laufende Auth-Vorfall, `null` ohne einen. Siehe `authIncidentView`. */
+  authIncident: authIncidentView.nullable(),
 });
 export type OverviewPayload = z.infer<typeof overviewPayload>;
 

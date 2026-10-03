@@ -31,7 +31,7 @@ import {
   type WindowLatch,
 } from '@vorschicht/shared';
 import type postgres from 'postgres';
-import { healthTiles } from './betrieb.js';
+import { authVorfall, healthTiles, readAuthVorfall } from './betrieb.js';
 
 /**
  * The payload's shape is `@vorschicht/shared/inbox`'s, and the dashboard parses
@@ -198,10 +198,14 @@ export async function buildOverview(deps: OverviewDeps): Promise<Overview> {
   // §10, §12 und §18 — die drei Dinge, ohne die §17.1s „null Klicks, um zu
   // wissen, ob alles in Ordnung ist" nicht zutrifft. Nebenläufig, weil keine
   // von ihnen die andere braucht und diese Seite bei jedem Aufruf lädt.
-  const [mergeQueue, deploys, health] = await Promise.all([
+  const jetzt = deps.now?.() ?? Date.now();
+  const [mergeQueue, deploys, health, vorfall] = await Promise.all([
     readMergeQueue(deps.sql),
     readRecentDeploys(deps.sql),
-    healthTiles(deps.sql, deps.now?.() ?? Date.now()),
+    healthTiles(deps.sql, jetzt),
+    // §6.1: während eines Auth-Vorfalls sagt der Wächter nur „Keine Budgetdaten"
+    // — das ist die Folge, und diese Zeile ist die Ursache (`authVorfall`).
+    readAuthVorfall(deps.sql),
   ]);
 
   const weekly = samples.find((sample) => sample.window === 'seven_day');
@@ -239,6 +243,7 @@ export async function buildOverview(deps: OverviewDeps): Promise<Overview> {
     mergeQueue,
     deploys,
     health,
+    authIncident: authVorfall(vorfall, jetzt),
     // Asked unconditionally, unlike `claimBlocked` above: that one is skipped
     // when no decision is open because it cannot then produce a row, and this
     // one has no such precondition — a read-only project with tasks on it is

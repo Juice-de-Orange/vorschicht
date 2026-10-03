@@ -52,6 +52,17 @@ export interface CycleState {
   authIncidentParked: boolean;
 }
 
+/**
+ * What `Notifier.send` answers, as far as this module reads it.
+ *
+ * It used to be `Promise<unknown>` and the cycle discarded it — so with an
+ * unreachable ntfy server the one alert §6.1 promises went nowhere, **and
+ * nothing said so**: no log line, nothing in the event. `notify.ts` returns the
+ * failure precisely "so the caller can log [it] and, where it matters (alerts),
+ * fall back to the event log"; this is the caller that did neither.
+ */
+export type NotifierOutcome = { ok: true } | { ok: false; error: string };
+
 export interface NotifierLike {
   send(message: {
     topic: string;
@@ -59,7 +70,20 @@ export interface NotifierLike {
     message: string;
     priority?: string;
     tags?: string[];
-  }): Promise<unknown>;
+  }): Promise<NotifierOutcome>;
+}
+
+/**
+ * Whether the alert of a failing pass reached ntfy — recorded with the event.
+ *
+ * `announced` is `disk.checked`'s word for the same fact (`disk-watch.ts`): an
+ * alert ntfy refused is an alert nobody got, and the row that says an incident
+ * happened is the only place left that can say the operator was not told.
+ */
+export interface AlertDelivery {
+  announced: boolean;
+  /** ntfy's refusal or the network error, verbatim. Null when delivered. */
+  error: string | null;
 }
 
 export interface CycleDeps {
@@ -69,7 +93,11 @@ export interface CycleDeps {
     resumeAll(): Promise<unknown[]>;
   };
   notifier: NotifierLike;
-  appendEvent(kind: 'auth.incident' | 'system.selfcheck_failed', reasons: string[]): Promise<void>;
+  appendEvent(
+    kind: 'auth.incident' | 'system.selfcheck_failed',
+    reasons: string[],
+    alert: AlertDelivery,
+  ): Promise<void>;
   /** Housekeeping that only runs on a healthy pass: token age, worktree GC. */
   onReady?(): Promise<void>;
   /**
@@ -128,11 +156,14 @@ export async function selfCheckCycle(deps: CycleDeps, state: CycleState): Promis
       resumed = back.length;
       state.authIncidentParked = false;
       deps.logger.info({ resumed }, 'Auth-Vorfall behoben — Arbeit fortgesetzt');
-      await deps.notifier.send({
+      const sent = await deps.notifier.send({
         topic: 'info',
         title: 'Vorschicht: Anmeldung wieder in Ordnung',
         message: `${resumed} geparkte Aufgabe(n) werden fortgesetzt.`,
       });
+      if (!sent.ok) {
+        deps.logger.warn({ error: sent.error }, 'Entwarnung über ntfy nicht zugestellt');
+      }
 
       // §8.2's trigger, on the way back out (see `CycleDeps.requestAudit`).
       // Inside the `authIncidentParked` branch and not beside it: every healthy
@@ -168,9 +199,35 @@ export async function selfCheckCycle(deps: CycleDeps, state: CycleState): Promis
   // §6.1: an authentication failure is an **auth incident**, never a task
   // failure. Nothing is marked red; the daemon idles and says so.
   const authIncident = isAuthIncident(failures);
+
+  // The alert goes out **before** the event is written, so the event can say
+  // whether it arrived. A push that failed used to be discarded here: with an
+  // unreachable ntfy server the daemon idled, the log said nothing about the
+  // channel, and the `auth.incident` row read as if the operator had been told.
+  // It is retried by construction — every failing pass alerts again.
+  const sent = await deps.notifier.send({
+    topic: 'alerts',
+    title: authIncident
+      ? 'Vorschicht: Auth-Vorfall — Daemon nimmt keine Arbeit an'
+      : 'Vorschicht: Selbstprüfung fehlgeschlagen',
+    message: failures.map((f) => `• ${f.reason}`).join('\n'),
+    priority: 'high',
+    tags: ['warning'],
+  });
+  const alert: AlertDelivery = sent.ok
+    ? { announced: true, error: null }
+    : { announced: false, error: sent.error };
+  if (!sent.ok) {
+    deps.logger.warn(
+      { error: sent.error },
+      'Alarm über ntfy nicht zugestellt — der Vorfall steht nur im Ereignisprotokoll und in diesem Log',
+    );
+  }
+
   await deps.appendEvent(
     authIncident ? 'auth.incident' : 'system.selfcheck_failed',
     failures.map((f) => f.reason),
+    alert,
   );
 
   let parked = 0;
@@ -183,21 +240,11 @@ export async function selfCheckCycle(deps: CycleDeps, state: CycleState): Promis
         deps.logger.warn({ parked, total: outcomes.length }, 'Laufende Arbeit geparkt');
       }
     } catch (error) {
-      // Parking that failed must not stop the alert: the operator still has to
-      // hear about the incident, and the tasks are no worse off than before.
+      // Parking that failed does not undo the alert above: the operator has
+      // heard about the incident, and the tasks are no worse off than before.
       deps.logger.error({ err: error }, 'Parken der laufenden Arbeit fehlgeschlagen');
     }
   }
-
-  await deps.notifier.send({
-    topic: 'alerts',
-    title: authIncident
-      ? 'Vorschicht: Auth-Vorfall — Daemon nimmt keine Arbeit an'
-      : 'Vorschicht: Selbstprüfung fehlgeschlagen',
-    message: failures.map((f) => `• ${f.reason}`).join('\n'),
-    priority: 'high',
-    tags: ['warning'],
-  });
 
   // Idle, do not crash: an auth incident parks work, it never fails tasks
   // (§6.1). Exiting here would hand compose a restart loop instead.

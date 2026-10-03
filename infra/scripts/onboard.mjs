@@ -19,6 +19,13 @@
  *     --name "Example App" --read-only
  *   infra/scripts/onboard.sh --path … --slug … --apply --actor <actor>
  *
+ * `--actor` (or `VORSCHICHT_ACTOR`) names who approves and has no default:
+ * `--apply` and `--apply-lauf` refuse to run without it.
+ *
+ * The session's transcript goes to `VORSCHICHT_TRANSCRIPTS_ROOT` (else
+ * `<VORSCHICHT_DATA_ROOT>/transcripts`); with neither set it stays in the
+ * scratch directory and is deleted with it — the run says so.
+ *
  * Costs subscription budget: one session at the strongest tier (A70 — the
  * proposal is permanent and rare). Not part of `pnpm gate`.
  *
@@ -33,6 +40,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { argv, env, exit } from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+
+import { actorFor, transcriptsRootFor } from './onboard-args.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -62,7 +71,7 @@ const slug = arg('slug');
 const name = arg('name', slug);
 const readOnly = argv.includes('--read-only');
 const apply = argv.includes('--apply');
-const actor = arg('actor', 'max');
+const actor = actorFor(arg('actor'), env);
 
 /**
  * §20s zweiter Akt: einen **gelesenen** Vorschlag übernehmen, ohne Sitzung.
@@ -82,6 +91,16 @@ if (applyRun === null && (!rootPath || !slug)) {
 }
 if (applyRun === null && !/^[a-z0-9][a-z0-9-]*$/.test(slug)) {
   console.error(`onboard — "${slug}" ist kein taugliches Kürzel (a-z, 0-9, Bindestrich).`);
+  exit(2);
+}
+
+// Before the database and long before a session: a run that spends budget and
+// *then* refuses for want of a name would have to be paid for twice.
+if ((apply || applyRun !== null) && actor === null) {
+  console.error(
+    'onboard — --actor <name> fehlt (oder VORSCHICHT_ACTOR setzen): wer einen Vorschlag ' +
+      'übernimmt, wird im audit_log genannt, und dafür gibt es keine Vorgabe.',
+  );
   exit(2);
 }
 
@@ -128,6 +147,10 @@ try {
   await writeRoleSettings(join(scratch, 'claude'), {
     hookEntry: join(REPO_ROOT, 'packages/core/dist/hook-entry.js'),
   });
+  // **Nicht** blind in den Wegwerf-Ordner (A150, hier nachgezogen): der
+  // `finally`-Block löscht `scratch`, und `onboard-remote.sh` hängt eigens ein
+  // Verzeichnis ein, aus dem es das Protokoll danach ins gesicherte Volume legt.
+  const transkripte = transcriptsRootFor(env, scratch);
 
   const onboarding = new OnboardingService({
     runner: new AgentRunner({
@@ -137,7 +160,7 @@ try {
       paths: {
         roleSettingsDir: join(scratch, 'claude'),
         runsRoot: join(scratch, 'runs'),
-        transcriptsRoot: join(scratch, 'transcripts'),
+        transcriptsRoot: transkripte.root,
         mcpServerEntry: null,
       },
       onWarning: (message) => console.warn(`  ! ${message}`),
@@ -150,6 +173,14 @@ try {
   console.log(`Onboarding-Trockenlauf — ${name} (${slug})`);
   console.log(`  Pfad: ${rootPath}`);
   console.log(`  Nur Analyse: ${readOnly ? 'ja (A41)' : 'nein'}`);
+  if (transkripte.durable) {
+    console.log(`  Sitzungsprotokoll: ${transkripte.root}`);
+  } else {
+    console.warn(
+      '  ! Weder VORSCHICHT_TRANSCRIPTS_ROOT noch VORSCHICHT_DATA_ROOT ist gesetzt: das ' +
+        'Sitzungsprotokoll liegt im Wegwerfverzeichnis und wird mit ihm gelöscht.',
+    );
+  }
 
   const proposal = await onboarding.propose({ rootPath, slug, readOnly, name });
   if (proposal.status !== 'proposed') {

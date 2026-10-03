@@ -255,7 +255,9 @@ describe('Startprobe als Selbstprüfung (§6.1)', () => {
     const appendEvent = vi.fn(
       async (_kind: 'auth.incident' | 'system.selfcheck_failed', _reasons: string[]) => undefined,
     );
-    const send = vi.fn(async (_message: { topic: string; title: string }) => undefined);
+    const send = vi.fn(async (_message: { topic: string; title: string }) => ({
+      ok: true as const,
+    }));
     const onReady = vi.fn(async () => undefined);
 
     const cycle = await selfCheckCycle(

@@ -61,6 +61,14 @@ vc logs -f --tail 100 orchestrator
 without `(healthy)` is still starting — the orchestrator runs its self-check
 (§6.1) at start-up and needs one model session for it.
 
+**`(healthy)` on the orchestrator means "the process is alive", not "it is
+working".** Its healthcheck is a heartbeat file, and during an auth incident
+(§6.1) the daemon idles on purpose instead of exiting — so the container stays
+`running (healthy)` while it takes no work. Look at the dashboard's overview
+instead (a red "Auth-Vorfall" strip directly under the verdict, which then only
+says "Keine Budgetdaten"), at `vc logs orchestrator` (`Selbstprüfung rot`), or
+at the `auth.incident` rows in `event_log`.
+
 **Never `vc down`,** unless you really want the networks torn down. `stop` is
 enough for everything, and `down -v` would take the volumes with it.
 
@@ -96,6 +104,14 @@ session at the strongest tier and spends subscription budget. With the
 `.env.example` placeholder as `CLAUDE_CODE_OAUTH_TOKEN` it ends as an auth
 incident: exit code 2, no proposal.
 
+**How far this section has been tested.** It was read off the scripts
+(`onboard-remote.sh`, `onboard.sh`, `onboard.mjs`) and checked against them
+line by line; the argument handling and the refusals below were run. The
+procedure as a whole — a session that produces a proposal, and applying it —
+has **not been executed end to end in the published state** of this repository,
+because that takes a subscription. Treat the first run as a test of this
+section, and report what does not match.
+
 **Before you start**
 
 - The repository must be a git checkout **below the projects root**
@@ -110,7 +126,25 @@ incident: exit code 2, no proposal.
 any machine that reaches the host by non-interactive SSH. It expects the stack
 checkout at `/opt/vorschicht` on the host (`VORSCHICHT_REMOTE_ROOT`), its
 `.env` with the token, the running container `vorschicht-orchestrator-1` and
-the network `vorschicht_default` (`VORSCHICHT_REMOTE_NET`):
+the network `vorschicht_default` (`VORSCHICHT_REMOTE_NET`).
+
+What it does on the host besides the analysis, so that none of it is a
+surprise:
+
+- **It builds the gate image** (`vorschicht-gate:local`, from
+  `infra/docker/Dockerfile.gate`) on every call. After the first time that is a
+  cache hit; the first time it downloads and installs for several minutes.
+- **It may install and build inside the stack checkout.** The session runs in
+  that image with the checkout mounted at `/work`; if `packages/core/dist` is
+  missing there, it runs `pnpm install --frozen-lockfile` and the build first,
+  which writes `node_modules` and `dist` into the checkout as your SSH user.
+- **It assumes the override layout and passwordless `sudo`** for one step:
+  afterwards the session transcript is copied into the backed-up transcripts
+  directory with `sudo -n cp` and `sudo -n chown` — `/srv/vorschicht/transcripts`
+  unless `VORSCHICHT_REMOTE_TRANSCRIPTS_DIR` says otherwise. Without
+  passwordless sudo, or on a stack that keeps its transcripts in the base
+  file's named volume, the run still completes; the script then prints the
+  temporary directory the transcript was left in, and moving it is yours.
 
 ```bash
 # 1. Dry run: one session, mounts the repository read-only, creates nothing
@@ -127,7 +161,16 @@ infra/scripts/onboard-remote.sh --host <host> --apply-lauf <runId> --actor <your
 The script sets `--path` itself, to `/projects/<basename of --repo>`; that only
 matches what the orchestrator sees if `--repo` is a direct child of the
 projects root. Add `--read-only` to step 1 for a project the studio may analyse
-but never write to. Step 3 refuses a proposal the verification rejected.
+but never write to.
+
+`--actor` names who approved, lands in `audit_log`, and has **no default**:
+step 3 refuses to run without it (exit 2). `onboard.mjs` also reads it from
+`VORSCHICHT_ACTOR`, which helps with `pnpm onboard`; `onboard-remote.sh` does
+not carry your environment to the host, so there it has to be the flag.
+
+Step 3 also refuses a run id it does not know and a proposal the verification
+rejected — both with exit **2**, not 1: nothing was applied and nothing was
+analysed, and the message says which of the two it was.
 
 **From a checkout** — `pnpm onboard` (`infra/scripts/onboard.sh`) runs the same
 analysis with the `claude` CLI on your `PATH`:
@@ -144,10 +187,16 @@ stack — for that the run has to write to the stack's database and `--path` has
 to be the path the orchestrator sees, which is what `onboard-remote.sh`
 arranges.
 
-Exit codes of both: **0** proposal stands (or was applied) · **1** the
-verification refused the proposal · **2** infra, nothing was analysed (this
-includes a token that does not authenticate) · **3** the session ran and
-delivered nothing usable.
+Exit codes of both: **0** proposal stands (or was applied) · **1** the session
+produced a proposal and the verification refused it (also: `--apply` in the
+same run as such a proposal) · **2** nothing was analysed or applied — infra, a
+token that does not authenticate, a missing `--actor`, or an `--apply-lauf` that
+was refused · **3** the session ran and delivered nothing usable.
+
+The session transcript is archived under `VORSCHICHT_TRANSCRIPTS_ROOT` (else
+`<VORSCHICHT_DATA_ROOT>/transcripts`); `onboard-remote.sh` sets the former. A
+`pnpm onboard` with neither set keeps it in its scratch directory, deletes it
+with that directory at the end, and says so.
 
 ---
 
@@ -167,25 +216,93 @@ generation loads, the schema is ours, the transcripts that `agent_runs` points
 at really are in the archive, and a deleted file produces exactly one gap (the
 counter-check — without it, "0 missing" would be indistinguishable from a
 broken join). Exit **1** is a finding; exit **2** means "nothing checked" and is
-**not** an all-clear.
+**not** an all-clear. On a stack that has not run a single session yet, stage 5
+is a finding by design ("Kein einziger Lauf nennt ein Transkript"): there is
+nothing for it to check, and it says so rather than passing.
 
-**Where the backups are:** `/srv/vorschicht/backups/daily` (14 kept) and
-`.../weekly` (8). Every night at 02:30, three files with the same timestamp
-appear: `db-<stamp>.dump`, `docs-<stamp>.tar.gz`, `transcripts-<stamp>.tar.gz`.
+The probe looks for *yesterday's* generation and reports its absence as a
+finding (exit 1) — on a stack younger than a day, too. `--generation <stamp>`
+names another one (the stamp is the `YYYYMMDD-HHMMSS` part of the file names),
+and `--backups <dir>` another directory.
 
-**The real restore**, should it ever be needed — order matters:
+**Where the backups are** depends on how the stack was started:
+
+- **With the host overlay** (`docker-compose.override.yml`):
+  `/srv/vorschicht/backups/daily` (14 kept) and `.../weekly` (8) — the probe's
+  default.
+- **With the base compose file alone** (the README quick start): in the named
+  volume `vorschicht_backups`, at `/backups/daily` and `/backups/weekly` inside
+  the `backup` container. The probe reads a directory, not a volume, so copy
+  the generations out first:
+
+  ```bash
+  mkdir -p /var/tmp/vorschicht-backups
+  docker run --rm -v vorschicht_backups:/backups:ro -v /var/tmp/vorschicht-backups:/out \
+    postgres:16-alpine sh -c "cp -r /backups/daily /out/ && chown -R $(id -u):$(id -g) /out"
+  infra/scripts/restore-probe.sh --backups /var/tmp/vorschicht-backups/daily
+  ```
+
+Every night at 02:30, three files with the same timestamp appear:
+`db-<stamp>.dump`, `docs-<stamp>.tar.gz`, `transcripts-<stamp>.tar.gz`.
+`vc exec backup ls /backups/daily` lists them in either layout.
+
+**The real restore**, should it ever be needed — order matters. `vc` is the
+alias from the first section; with the base compose file alone it is
+`docker compose -f infra/docker-compose.yml --env-file .env`.
 
 ```bash
 vc stop orchestrator app          # nobody may write while loading
-sudo -u postgres true             # (reminder only: the dump belongs to uid 10001)
-vc exec -T db psql -U vorschicht -c 'DROP DATABASE vorschicht; CREATE DATABASE vorschicht;'
-docker exec -i vorschicht-db-1 pg_restore -U vorschicht -d vorschicht \
-  --exit-on-error --no-owner --no-privileges < /srv/vorschicht/backups/daily/db-<stamp>.dump
-sudo tar -xzf /srv/vorschicht/backups/daily/docs-<stamp>.tar.gz        -C /srv/vorschicht --strip-components=0
-sudo tar -xzf /srv/vorschicht/backups/daily/transcripts-<stamp>.tar.gz -C /srv/vorschicht --strip-components=0
-sudo chown -R 10001:10001 /srv/vorschicht/docs /srv/vorschicht/transcripts
+
+# 1. An empty database. Connected to `postgres`, not to `vorschicht`: a database
+#    cannot be dropped by a session that is connected to it. Two -c, because
+#    DROP DATABASE cannot run inside the transaction a single -c with two
+#    statements would be.
+vc exec -T db psql -U vorschicht -d postgres \
+  -c 'DROP DATABASE vorschicht' -c 'CREATE DATABASE vorschicht'
+
+# 2. The dump, read where the sidecar keeps it (works in both layouts; the
+#    `backup` service has to be running).
+vc exec -T backup cat /backups/daily/db-<stamp>.dump \
+  | vc exec -T db pg_restore -U vorschicht -d vorschicht \
+      --exit-on-error --no-owner --no-privileges
+
+# 3. Documents and transcripts — see below for the layout you run.
+
 vc up -d
 ```
+
+`-U vorschicht` and the database name are the `.env.example` defaults
+(`POSTGRES_USER`, `POSTGRES_DB`); use yours if you changed them. If step 1
+answers "database is being accessed by other users", something else is still
+connected — stop it, or use `DROP DATABASE vorschicht WITH (FORCE)`.
+
+Step 3 **with the host overlay** — the archives unpack to `docs/` and
+`transcripts/` below the data root:
+
+```bash
+sudo tar -xzf /srv/vorschicht/backups/daily/docs-<stamp>.tar.gz        -C /srv/vorschicht
+sudo tar -xzf /srv/vorschicht/backups/daily/transcripts-<stamp>.tar.gz -C /srv/vorschicht
+sudo chown -R 10001:10001 /srv/vorschicht/docs /srv/vorschicht/transcripts
+```
+
+Step 3 **with the base compose file alone** — the same, into the named volumes,
+through a throwaway container (the `backup` service mounts both read-only and
+cannot do it):
+
+```bash
+docker run --rm \
+  -v vorschicht_backups:/backups:ro \
+  -v vorschicht_docs:/data/docs -v vorschicht_transcripts:/data/transcripts \
+  postgres:16-alpine sh -c '
+    tar -xzf /backups/daily/docs-<stamp>.tar.gz        -C /data &&
+    tar -xzf /backups/daily/transcripts-<stamp>.tar.gz -C /data &&
+    chown -R 10001:10001 /data/docs /data/transcripts'
+```
+
+Unpacking adds and overwrites; a file created after the backup stays where it
+is. The database then has no row for it, which is harmless for the vault and
+the trace views — delete the directories' contents first if you want the exact
+state of the backup.
 
 **What explicitly does not happen:** the migrations are **not** run again. The
 dump carries its schema and its `_vorschicht_migrations` rows with it; a
@@ -234,6 +351,9 @@ the start-up probe (§6.1). Its failure is an auth incident like any other: the
 log says `Selbstprüfung rot` with "Die Sitzung konnte sich nicht anmelden",
 `event_log` gets an `auth.incident`, `vorschicht-alerts` gets "Auth-Vorfall —
 Daemon nimmt keine Arbeit an", and the probe is repeated every five minutes.
+If that push does not get through, the log says `Alarm über ntfy nicht
+zugestellt` and the event row carries `announced: false` with the error — the
+overview's "Auth-Vorfall" strip repeats it.
 `Selbstprüfung bestanden — Daemon ist bereit.` does not appear until a session
 has authenticated.
 
@@ -257,8 +377,9 @@ vc exec app node dist/cli/invite.js --purpose=rescue
 ```
 
 The CLI is part of the **`app`** image; the orchestrator image does not contain
-it. The purpose has to be written with `=`: the CLI reads `--purpose=<value>`
-only, and anything else falls back to an ordinary `bootstrap` invitation.
+it. `--purpose rescue` and `--purpose=rescue` are the same; an argument the
+CLI does not understand is refused with a usage line (exit 2) instead of
+falling back to an ordinary `bootstrap` invitation, as it once silently did.
 
 This prints **one** link. Open it on the device that is to receive the new
 passkey, enter a device name, register.
@@ -276,7 +397,7 @@ session:
 
 ```bash
 curl -s https://vorschicht.example.com/api/auth/state
-# {"credentialCount":2,"complete":true, ...}
+# {"bootstrap":{"complete":true,"credentialCount":2,"missing":0},"hinweis":"…","angemeldet":false}
 ```
 
 *(Since A147 the registration sends at most **32** existing credentials as
@@ -440,6 +561,10 @@ and now runs as **10001**, like the volumes it copies. An **already existing**
 Docker does not reset it, because it seeds a volume from the image only when
 the volume is *empty*. On every installation that has backed up at least once,
 that is the normal case.
+
+A host prepared with `install-host.sh` before the script was corrected shows
+the same symptom on its very first start: the script used to hand
+`<data root>/backups` to uid 70. Re-running it repairs the ownership.
 
 **Why the switch was necessary.** The sidecar could not read the transcripts.
 They belong to uid 10001 and carry mode 0600 (the copy inherits the mode of

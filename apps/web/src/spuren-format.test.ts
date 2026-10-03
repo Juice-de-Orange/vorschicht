@@ -20,6 +20,9 @@ import {
   LEERER_FILTER,
   laufAusgang,
   leerText,
+  leseAufgabe,
+  leseDiff,
+  leseLauf,
   leseListe,
   listenUrl,
   sichtbareZeilen,
@@ -31,10 +34,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function antwortet(koerper: unknown): void {
+function antwortet(koerper: unknown, status = 200): void {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () => ({ json: async () => koerper })),
+    vi.fn(async () => ({ status, json: async () => koerper })),
   );
 }
 
@@ -92,6 +95,44 @@ describe('Eine Antwort wird gelesen, nicht behauptet', () => {
     antwortet({ errors: ['Aufgabe nicht gefunden'] });
 
     expect((await leseListe(LEERER_FILTER)).ok).toBe(false);
+  });
+});
+
+/**
+ * `/spuren/aufgabe/<unbekannte Kennung>`: der Server antwortet 404 mit
+ * `{ errors: ['Aufgabe nicht gefunden'] }`, und die Seite sagte dazu „hat nicht
+ * die vereinbarte Form. Das ist ein Fehler in dieser Anwendung, nicht in deiner
+ * Eingabe" — für genau den Fall, in dem es die Eingabe war.
+ */
+describe('Eine Kennung, die es nicht gibt', () => {
+  const KENNUNG = '00000000-0000-4000-8000-000000000000';
+
+  it('nennt eine unbekannte Aufgabe so, statt einen Fehler der Anwendung zu melden', async () => {
+    antwortet({ errors: ['Aufgabe nicht gefunden'] }, 404);
+
+    const gelesen = await leseAufgabe(KENNUNG);
+
+    expect(gelesen.ok).toBe(false);
+    expect(gelesen.ok === false && gelesen.fehler).toContain('Diese Aufgabe gibt es nicht');
+    expect(gelesen.ok === false && gelesen.fehler).not.toContain('Fehler in dieser Anwendung');
+  });
+
+  it('hält es beim Vergleich und beim Lauf genauso', async () => {
+    antwortet({ errors: ['Aufgabe nicht gefunden'] }, 404);
+    const diff = await leseDiff(KENNUNG);
+    expect(diff.ok === false && diff.fehler).toContain('Diese Aufgabe gibt es nicht');
+
+    antwortet({ errors: ['Lauf nicht gefunden'] }, 404);
+    const lauf = await leseLauf(KENNUNG, {});
+    expect(lauf.ok === false && lauf.fehler).toContain('Diesen Lauf gibt es nicht');
+  });
+
+  it('meldet eine falsche Form weiterhin als Fehler der Anwendung — auch bei 500', async () => {
+    antwortet({ errors: ['Die Spur konnte nicht gelesen werden: boom'] }, 500);
+
+    const gelesen = await leseAufgabe(KENNUNG);
+
+    expect(gelesen.ok === false && gelesen.fehler).toContain('nicht die vereinbarte Form');
   });
 });
 

@@ -21,10 +21,12 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import {
+  type AlertDelivery,
   type CycleDeps,
   type CycleState,
   isAuthIncident,
   type NotifierLike,
+  type NotifierOutcome,
   selfCheckCycle,
 } from './incident-cycle.js';
 import {
@@ -64,9 +66,17 @@ function harness(script: CheckResult[][]) {
   // Typed, deliberately: a bare `vi.fn()` gives `mock.calls[0]` the type `[]`,
   // so every assertion that reads an argument would be checking `never` and
   // asserting nothing. That is the defect A50 records finding fifteen of.
-  const send = vi.fn(async (_message: Parameters<NotifierLike['send']>[0]) => undefined);
+  const send = vi.fn(
+    async (_message: Parameters<NotifierLike['send']>[0]): Promise<NotifierOutcome> => ({
+      ok: true,
+    }),
+  );
   const appendEvent = vi.fn(
-    async (_kind: 'auth.incident' | 'system.selfcheck_failed', _reasons: string[]) => undefined,
+    async (
+      _kind: 'auth.incident' | 'system.selfcheck_failed',
+      _reasons: string[],
+      _alert: AlertDelivery,
+    ) => undefined,
   );
   const onReady = vi.fn(async () => undefined);
 
@@ -97,7 +107,10 @@ describe('selfCheckCycle (§6.1)', () => {
     expect(outcome.waitMs).toBe(300_000);
 
     expect(h.parkAll).toHaveBeenCalledWith('auth_incident');
-    expect(h.appendEvent).toHaveBeenCalledWith('auth.incident', [AUTH_FAILURE.reason]);
+    expect(h.appendEvent).toHaveBeenCalledWith('auth.incident', [AUTH_FAILURE.reason], {
+      announced: true,
+      error: null,
+    });
     expect(h.send).toHaveBeenCalledTimes(1);
     const alert = h.send.mock.calls[0]?.[0];
     expect(alert?.topic).toBe('alerts');
@@ -224,7 +237,10 @@ describe('selfCheckCycle (§6.1)', () => {
     const outcome = await selfCheckCycle(h.deps, h.state);
 
     expect(outcome.authIncident).toBe(false);
-    expect(h.appendEvent).toHaveBeenCalledWith('system.selfcheck_failed', [OTHER_FAILURE.reason]);
+    expect(h.appendEvent).toHaveBeenCalledWith('system.selfcheck_failed', [OTHER_FAILURE.reason], {
+      announced: true,
+      error: null,
+    });
     expect(h.parkAll).toHaveBeenCalledWith('manual_pause');
     expect(h.send.mock.calls[0]?.[0]?.title).toContain('Selbstprüfung fehlgeschlagen');
   });
@@ -241,6 +257,92 @@ describe('selfCheckCycle (§6.1)', () => {
     expect(h.send).toHaveBeenCalledTimes(1);
     // And it did not latch, so the next pass tries to park again.
     expect(h.state.authIncidentParked).toBe(false);
+  });
+
+  /**
+   * A failed push used to be discarded: `notifier.send` answers
+   * `{ ok: false, error }` instead of throwing, and nothing read the answer. With
+   * an unreachable ntfy server the daemon idled without an alert **and without
+   * a line saying the alert had not gone out** — found by a functional check
+   * that pointed `NTFY_SERVER` at a closed port.
+   */
+  describe('ein Alarm, den ntfy nicht annimmt', () => {
+    const REFUSED: NotifierOutcome = { ok: false, error: 'fetch failed' };
+
+    it('steht im Log und im Ereignis, statt verworfen zu werden', async () => {
+      const warn = vi.fn();
+      const h = harness([[AUTH_FAILURE]]);
+      h.deps.logger = { ...silentLogger, warn };
+      h.send.mockResolvedValue(REFUSED);
+
+      const outcome = await selfCheckCycle(h.deps, h.state);
+
+      // The incident is handled exactly as before — only no longer silently.
+      expect(outcome.ready).toBe(false);
+      expect(outcome.authIncident).toBe(true);
+      expect(h.parkAll).toHaveBeenCalledWith('auth_incident');
+      expect(h.appendEvent).toHaveBeenCalledWith('auth.incident', [AUTH_FAILURE.reason], {
+        announced: false,
+        error: 'fetch failed',
+      });
+      const zeile = warn.mock.calls.find(([, message]) =>
+        String(message).includes('Alarm über ntfy nicht zugestellt'),
+      );
+      expect(zeile?.[0]).toEqual({ error: 'fetch failed' });
+    });
+
+    it('gilt genauso für eine Selbstprüfung, die kein Auth-Vorfall ist', async () => {
+      const h = harness([[OTHER_FAILURE]]);
+      h.send.mockResolvedValue(REFUSED);
+
+      await selfCheckCycle(h.deps, h.state);
+
+      expect(h.appendEvent).toHaveBeenCalledWith(
+        'system.selfcheck_failed',
+        [OTHER_FAILURE.reason],
+        { announced: false, error: 'fetch failed' },
+      );
+    });
+
+    it('wird beim nächsten Durchlauf erneut versucht und dann als zugestellt vermerkt', async () => {
+      const h = harness([[AUTH_FAILURE]]);
+      h.send.mockResolvedValueOnce(REFUSED);
+
+      await selfCheckCycle(h.deps, h.state);
+      await selfCheckCycle(h.deps, h.state);
+
+      expect(h.send).toHaveBeenCalledTimes(2);
+      expect(h.appendEvent.mock.calls.map((call) => call[2].announced)).toEqual([false, true]);
+    });
+
+    it('sagt bei einem zugestellten Alarm nichts über den Kanal', async () => {
+      const warn = vi.fn();
+      const h = harness([[AUTH_FAILURE]]);
+      h.deps.logger = { ...silentLogger, warn };
+
+      await selfCheckCycle(h.deps, h.state);
+
+      expect(warn.mock.calls.map(([, message]) => String(message)).join('\n')).not.toContain(
+        'nicht zugestellt',
+      );
+    });
+
+    it('meldet auch eine Entwarnung, die nicht ankam, ohne die Wiederaufnahme zu stören', async () => {
+      const warn = vi.fn();
+      const h = harness([[AUTH_FAILURE], [PASS]]);
+      h.deps.logger = { ...silentLogger, warn };
+
+      await selfCheckCycle(h.deps, h.state);
+      h.send.mockResolvedValueOnce(REFUSED);
+      const recovered = await selfCheckCycle(h.deps, h.state);
+
+      expect(recovered.ready).toBe(true);
+      expect(recovered.resumed).toBe(2);
+      expect(warn).toHaveBeenCalledWith(
+        { error: 'fetch failed' },
+        'Entwarnung über ntfy nicht zugestellt',
+      );
+    });
   });
 
   it('waits the ready interval on a healthy pass and the retry interval otherwise', async () => {

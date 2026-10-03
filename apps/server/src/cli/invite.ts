@@ -7,7 +7,10 @@
  * has shell access to the production host, and no passkey outranks that.
  *
  *   docker compose -f infra/docker-compose.yml --env-file .env \
- *     exec app node dist/cli/invite.js [--purpose=rescue]
+ *     exec app node dist/cli/invite.js [--purpose rescue]
+ *
+ * `--purpose rescue` and `--purpose=rescue` are the same; an argument the CLI
+ * does not know is refused with the usage line (`invite-args.ts`).
  *
  * In the `app` service: this file is built into that image and into no other.
  * There is no `vorschicht-invite` binary on the host — the name is this
@@ -18,21 +21,19 @@
  */
 import { loadConfig } from '@vorschicht/core';
 import { createSql } from '@vorschicht/db';
-import { bootstrapState, type RegistrationPurpose } from '@vorschicht/shared';
+import { bootstrapState } from '@vorschicht/shared';
 import { AuthStore } from '../auth/store.js';
 import { INVITE_TTL_MS } from '../auth/tokens.js';
-
-const PURPOSES: RegistrationPurpose[] = ['bootstrap', 'rescue', 'additional'];
+import { INVITE_USAGE, parseInviteArgs } from './invite-args.js';
 
 async function main(): Promise<void> {
-  const args = process.argv.slice(2);
-  const purposeArg = args.find((a) => a.startsWith('--purpose='))?.split('=')[1];
-  const purpose = (purposeArg ?? 'bootstrap') as RegistrationPurpose;
-
-  if (!PURPOSES.includes(purpose)) {
-    console.error(`Unbekannter Zweck "${purpose}". Erlaubt: ${PURPOSES.join(', ')}`);
+  const parsed = parseInviteArgs(process.argv.slice(2));
+  if (!parsed.ok) {
+    console.error(parsed.problem);
+    console.error(INVITE_USAGE);
     process.exit(2);
   }
+  const { purpose } = parsed;
 
   const config = loadConfig();
   const sql = createSql({ url: config.databaseUrl, max: 1 });

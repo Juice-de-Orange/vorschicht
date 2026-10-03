@@ -306,4 +306,42 @@ test.describe
       // Zustand als Wort. Der Ton steht daneben und ist die zweite Schicht.
       await expect(platte).toHaveAttribute('data-ton', 'warnung');
     });
+
+    /**
+     * §6.1 auf der Startseite. Während eines Auth-Vorfalls sagte sie nur „Keine
+     * Budgetdaten" — die Folge, nicht die Ursache; die stand im Log des
+     * Orchestrators, dessen Container dabei `(healthy)` meldet. Gefunden bei
+     * einer Funktionsprüfung mit einem Token, der sich nicht anmeldet.
+     *
+     * Roh gesät, in der Form, in der der Daemon die Zeile schreibt, und als
+     * letzter Fall dieser Datei: `event_log` ist append-only, der Streifen
+     * bleibt also stehen, bis die Zeile gealtert ist.
+     */
+    test('nennt einen laufenden Auth-Vorfall als Grund, statt nur „Keine Budgetdaten"', async () => {
+      await seite.goto('/');
+      await expect(seite.getByTestId('guardian-state')).toBeVisible();
+      await expect(seite.getByTestId('auth-vorfall')).toHaveCount(0);
+
+      await sql`
+      INSERT INTO event_log (kind, actor, payload)
+      VALUES ('auth.incident', 'system', ${sql.json({
+        reasons: ['Die Sitzung konnte sich nicht anmelden (§6.1).'],
+        announced: false,
+        alertError: 'fetch failed',
+      } as never)})
+    `;
+
+      await seite.goto('/');
+      const vorfall = seite.getByTestId('auth-vorfall');
+      await expect(vorfall).toBeVisible();
+      await expect(vorfall).toContainText('Auth-Vorfall');
+      await expect(vorfall).toContainText('Die Anmeldung bei Claude schlägt fehl');
+      await expect(vorfall).toContainText('deshalb gibt es auch keine Budgetdaten');
+      await expect(vorfall).toContainText('Die Sitzung konnte sich nicht anmelden');
+      // N2s andere Hälfte: der Alarm kam nicht an, und die Seite sagt es.
+      await expect(vorfall).toContainText('Der Alarm über ntfy kam nicht an');
+      await expect(vorfall).toContainText('Renew the OAuth token');
+      // Das Urteil darüber bleibt stehen — der Streifen ersetzt es nicht.
+      await expect(seite.getByTestId('guardian-state')).toContainText('Keine Budgetdaten');
+    });
   });
