@@ -96,7 +96,11 @@ describe('bootstrapState', () => {
 
 describe('German copy (§2)', () => {
   it('names the CLI command when there is no passkey at all', () => {
-    expect(describeBootstrap(bootstrapState(0))).toContain('vorschicht-invite');
+    const hint = describeBootstrap(bootstrapState(0));
+    // A command that exists: the CLI is in the `app` image, and there is no
+    // `vorschicht-invite` binary anywhere (the hint used to name one).
+    expect(hint).toContain('exec app node dist/cli/invite.js');
+    expect(hint).not.toContain('vorschicht-invite');
   });
 
   it('explains the lock-out risk at one credential', () => {
@@ -108,6 +112,6 @@ describe('German copy (§2)', () => {
   });
 
   it('tells an expired invite how to get a new one', () => {
-    expect(describeRefusal('invite_expired')).toContain('vorschicht-invite');
+    expect(describeRefusal('invite_expired')).toContain('exec app node dist/cli/invite.js');
   });
 });

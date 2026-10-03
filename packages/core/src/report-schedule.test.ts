@@ -179,8 +179,12 @@ describe('Sommerzeit: der Termin bleibt auf der Uhr stehen, nicht auf dem Zeitst
     // mehr Zeit als die Rechnung selbst, und eine belastete Maschine färbte
     // sonst einen richtigen Code rot (A68). Der Bericht nennt die ersten drei
     // Verstösse im Klartext, was mehr sagt als ein einzelner roter Durchgang.
+    //
+    // Mit eigener Frist: 8760 Zeitzonenrechnungen brauchen allein rund eine
+    // Sekunde, und neben einem laufenden Container-Gate riss derselbe Test die
+    // 5 s der Voreinstellung — rot wegen der Maschine, nicht wegen des Codes.
     expect(ordnungsverstoesse(Date.parse('2026-01-01T00:00:00Z'), 365 * 24, HOUR)).toEqual([]);
-  });
+  }, 30_000);
 
   it('gibt über beide Eingänge dieselben Termine aus', () => {
     // Der Durchlauf oben fährt `evaluateReportSchedule`; die beiden einzelnen

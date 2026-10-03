@@ -71,6 +71,18 @@ export function bootstrapState(credentialCount: number): BootstrapState {
   return { complete: missing === 0, credentialCount, missing };
 }
 
+/**
+ * How an invite is minted (§19) — the command the two hints below print.
+ *
+ * Written out in full because the hint is read by somebody who is locked out
+ * and has nothing but a shell: it used to say `vorschicht-invite`, which is the
+ * CLI module's name and not a command that exists on any host. The CLI lives in
+ * the `app` image; run from the stack directory, this line works for the base
+ * compose file and for a host with an override alike.
+ */
+export const INVITE_COMMAND =
+  'docker compose -f infra/docker-compose.yml --env-file .env exec app node dist/cli/invite.js';
+
 /** German explanation for a refusal, shown to the caller and logged (§2). */
 export function describeRefusal(reason: RegistrationRefusal): string {
   switch (reason) {
@@ -81,7 +93,7 @@ export function describeRefusal(reason: RegistrationRefusal): string {
     case 'invite_already_used':
       return 'Diese Einladung wurde bereits verwendet. Einladungen gelten genau einmal.';
     case 'invite_expired':
-      return 'Diese Einladung ist abgelaufen. Auf dem Produktionshost eine neue erzeugen: vorschicht-invite';
+      return `Diese Einladung ist abgelaufen. Auf dem Produktionshost im Stack-Verzeichnis eine neue erzeugen: ${INVITE_COMMAND}`;
   }
 }
 
@@ -89,7 +101,7 @@ export function describeRefusal(reason: RegistrationRefusal): string {
 export function describeBootstrap(state: BootstrapState): string | null {
   if (state.complete) return null;
   if (state.credentialCount === 0) {
-    return 'Noch kein Passkey hinterlegt. Einrichtung auf dem Produktionshost starten: vorschicht-invite';
+    return `Noch kein Passkey hinterlegt. Einrichtung auf dem Produktionshost im Stack-Verzeichnis starten: ${INVITE_COMMAND}`;
   }
   return (
     `Erst ${state.credentialCount} von ${REQUIRED_BOOTSTRAP_CREDENTIALS} Passkeys hinterlegt — ` +

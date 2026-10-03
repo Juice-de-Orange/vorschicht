@@ -51,6 +51,15 @@ const CONTROL_TIMEOUT_MS = 15_000;
  */
 const EXIT_AFTER_RESULT_MS = 30_000;
 
+/**
+ * What an authentication failure looks like in the CLI's own words (§6.1).
+ *
+ * One expression for both places it can turn up: stderr of a process that died
+ * of it, and the text of an error result from one that reported it and exited.
+ */
+const AUTH_FAILURE =
+  /401|authentication_error|Failed to authenticate|OAuth token has expired|invalid api key/i;
+
 export interface HeadlessBackendOptions {
   /** Path to the pinned CLI. */
   command?: string;
@@ -496,6 +505,21 @@ class HeadlessRunHandle implements RunHandle {
         const subtype = message.subtype as string | undefined;
         if (subtype === 'error_max_turns') this.terminalReason = 'max_turns';
         if (subtype === 'error_max_budget_usd') this.terminalReason = 'max_budget';
+        // An auth failure the CLI *reports* instead of dying of (§6.1). The
+        // pinned CLI answers a rejected token with an ordinary result frame —
+        // `subtype: "success"`, `is_error: true`, `api_error_status: 401`, the
+        // sentence "Failed to authenticate. API Error: 401 …" as `result` — and
+        // an empty stderr, so `classify` below never saw it. The run then read
+        // as `completed` with a string where the role contract wants an object,
+        // was re-prompted once and reported as a contract violation: a dead
+        // token filed as bad work. Only on `is_error`, so that a model writing
+        // "401" in an honest answer accuses nobody.
+        if (
+          message.is_error === true &&
+          (message.api_error_status === 401 || AUTH_FAILURE.test(String(message.result ?? '')))
+        ) {
+          this.terminalReason = 'auth_incident';
+        }
         // Every refused tool call, hook denials included. §6.6's second layer
         // becomes auditable without transcript parsing.
         for (const denial of (message.permission_denials ?? []) as Array<Record<string, unknown>>) {
@@ -573,7 +597,7 @@ class HeadlessRunHandle implements RunHandle {
   private classify(code: number | null, stderr: string): TerminationReason {
     if (this.terminalReason) return this.terminalReason;
     // An auth failure is an auth incident, never a task failure (§6.1).
-    if (/401|authentication_error|OAuth token has expired|invalid api key/i.test(stderr)) {
+    if (AUTH_FAILURE.test(stderr)) {
       return 'auth_incident';
     }
     if (this.stopping) return 'interrupted';
