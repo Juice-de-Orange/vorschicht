@@ -54,14 +54,19 @@ for dir in postgres docs transcripts worktrees backups claude; do
     ok "$DATA_ROOT/$dir angelegt"
   fi
 done
-# Ownership follows the uid each container actually runs as. Getting this wrong
-# is not loud: the stack comes up, and only the backup sidecar's healthcheck
-# eventually reports that it has never managed to write a dump.
-#   10001 — app and orchestrator (our own images)
-#      70 — backup, which is based on postgres:alpine and runs as `postgres`
+# Ownership follows the uid each container actually runs as — read off the
+# Dockerfiles, not remembered:
+#   10001 — app, orchestrator **and backup** (`USER 10001:10001` in all three).
+#           The backup image is based on postgres:alpine but no longer runs as
+#           its `postgres` user (uid 70): it could not read the transcripts it
+#           archives (Dockerfile.backup). This script still handed `backups/` to
+#           uid 70, and the sidecar's entrypoint refuses a /backups it cannot
+#           write — so a fresh host install stopped at its first backup.
+#      70 — only `db`, the stock postgres image. Its entrypoint starts as root
+#           and takes over its own data directory, so `postgres/` is left as it
+#           is here.
 chown -R 10001:10001 "$DATA_ROOT/claude" "$DATA_ROOT/transcripts" "$DATA_ROOT/docs" \
-  "$DATA_ROOT/worktrees" 2>/dev/null || true
-chown -R 70:70 "$DATA_ROOT/backups" 2>/dev/null || true
+  "$DATA_ROOT/worktrees" "$DATA_ROOT/backups" 2>/dev/null || true
 chmod 750 "$DATA_ROOT"
 
 # --- 2. TLS ------------------------------------------------------------------

@@ -187,6 +187,19 @@ export function ereignisLabel(kind: string): string {
 }
 
 /**
+ * What tells two states apart **in the filter** when their label is the same.
+ *
+ * `escalated` (§9: the second failure) and `needs_decision` (§6.4: the session
+ * asked) both read "Wartet auf deine Entscheidung" — rightly so on a task, where
+ * the operator's part is the same. In a dropdown the two were one entry listed
+ * twice, selecting different tasks, with nothing to say which was which.
+ */
+const ZUSTAND_FILTER_ZUSATZ: Partial<Record<(typeof TASK_STATES)[number], string>> = {
+  escalated: 'nach zweitem Fehlschlag',
+  needs_decision: 'Rückfrage einer Sitzung',
+};
+
+/**
  * What the two dropdown filters offer.
  *
  * Aliases of `TASK_STATES` and `PRIORITIES`, not copies — a hand-written list
@@ -198,7 +211,13 @@ export function ereignisLabel(kind: string): string {
  * keeps them, so this list carries values only.
  */
 export const ZUSTAND_OPTIONEN: ReadonlyArray<{ wert: string; label: string }> = TASK_STATES.map(
-  (state) => ({ wert: state, label: TASK_STATE_LABELS[state] }),
+  (state) => ({
+    wert: state,
+    label:
+      state in ZUSTAND_FILTER_ZUSATZ
+        ? `${TASK_STATE_LABELS[state]} (${ZUSTAND_FILTER_ZUSATZ[state]})`
+        : TASK_STATE_LABELS[state],
+  }),
 );
 
 export const PRIORITAET_OPTIONEN: readonly string[] = PRIORITIES;

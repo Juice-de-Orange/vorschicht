@@ -272,6 +272,19 @@ export function Overview() {
       </p>
 
       {/*
+        §6.1: der laufende Auth-Vorfall, direkt unter dem Urteil. Der Wächter
+        sagt währenddessen nur „Keine Budgetdaten" — das stimmt, ist aber die
+        Folge; die Ursache stand bis hierher nur im Log des Orchestrators, und
+        dessen Container meldet sich dabei als gesund. Der Satz kommt fertig vom
+        Server (`authVorfall`) und nennt, was zu tun ist.
+      */}
+      {data.authIncident && (
+        <p data-testid="auth-vorfall" role="alert" className="streifen" data-ton="fehler">
+          <strong>Auth-Vorfall</strong> — {data.authIncident.text}
+        </p>
+      )}
+
+      {/*
         §15's counter, directly under the verdict: a studio that has stopped
         asking because nobody answered looks exactly like a studio with nothing
         to do, and this line is the only thing that separates the two. It is

@@ -109,17 +109,21 @@ export function listenUrl(filter: ListenFilter): string {
 }
 
 export async function leseListe(filter: ListenFilter): Promise<Gelesen<SpurenListeAntwort>> {
-  return lies(spurenListeAntwort, await hole(listenUrl(filter)), 'die Aufgabenliste');
+  return lies(spurenListeAntwort, (await hole(listenUrl(filter))).koerper, 'die Aufgabenliste');
 }
 
 export async function leseAufgabe(
   taskId: string,
 ): Promise<Gelesen<{ aufgabe: SpurAufgabeDetail }>> {
-  return lies(spurAufgabeAntwort, await hole(`${AUFGABEN_API}/${taskId}`), 'die Aufgabe');
+  const antwort = await hole(`${AUFGABEN_API}/${taskId}`);
+  if (antwort.status === 404) return { ok: false, fehler: AUFGABE_GIBT_ES_NICHT };
+  return lies(spurAufgabeAntwort, antwort.koerper, 'die Aufgabe');
 }
 
 export async function leseDiff(taskId: string): Promise<Gelesen<{ diff: SpurDiff }>> {
-  return lies(spurDiffAntwort, await hole(`${AUFGABEN_API}/${taskId}/diff`), 'den Vergleich');
+  const antwort = await hole(`${AUFGABEN_API}/${taskId}/diff`);
+  if (antwort.status === 404) return { ok: false, fehler: AUFGABE_GIBT_ES_NICHT };
+  return lies(spurDiffAntwort, antwort.koerper, 'den Vergleich');
 }
 
 export async function leseLauf(
@@ -133,24 +137,37 @@ export async function leseLauf(
     params.set(SPUREN_QUERY.page, String(anchor.seite));
   }
   const query = params.toString();
-  return lies(
-    spurLaufAntwort,
-    await hole(`${LAEUFE_API}/${runId}${query ? `?${query}` : ''}`),
-    'den Lauf',
-  );
+  const antwort = await hole(`${LAEUFE_API}/${runId}${query ? `?${query}` : ''}`);
+  if (antwort.status === 404) return { ok: false, fehler: LAUF_GIBT_ES_NICHT };
+  return lies(spurLaufAntwort, antwort.koerper, 'den Lauf');
 }
 
 /**
- * A GET whose body is returned whatever the status was.
+ * What a 404 from this surface says on the page.
+ *
+ * An id that names nothing is the *caller's* fact — a stale link, a typo in the
+ * address bar — and it used to fall through to the parse, which reported it as
+ * "hat nicht die vereinbarte Form. Das ist ein Fehler in dieser Anwendung". The
+ * one sentence on the page that tells somebody to stop looking at his own input
+ * was shown for exactly the case where his input was the cause.
+ */
+export const AUFGABE_GIBT_ES_NICHT =
+  'Diese Aufgabe gibt es nicht. Der Link ist veraltet oder die Kennung stimmt nicht.';
+export const LAUF_GIBT_ES_NICHT =
+  'Diesen Lauf gibt es nicht. Der Link ist veraltet oder die Kennung stimmt nicht.';
+
+/**
+ * A GET whose body is returned whatever the status was — next to the status.
  *
  * A non-2xx answer from this surface still carries `{ errors: [...] }`, and the
- * parse below turns it into the page's own sentence. Throwing on the status
- * instead would replace a German explanation with a network error, which is the
- * less informative half of what the server said.
+ * parse turns it into the page's own sentence. Throwing on the status instead
+ * would replace a German explanation with a network error, which is the less
+ * informative half of what the server said. The status travels along for the
+ * one case the parse cannot tell apart: "not found" (see above).
  */
-async function hole(url: string): Promise<unknown> {
+async function hole(url: string): Promise<{ status: number; koerper: unknown }> {
   const antwort = await fetch(url, { headers: { accept: 'application/json' } });
-  return await antwort.json().catch(() => null);
+  return { status: antwort.status, koerper: await antwort.json().catch(() => null) };
 }
 
 /**

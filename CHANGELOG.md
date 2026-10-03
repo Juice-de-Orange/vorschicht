@@ -35,7 +35,27 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `.env.example` no longer sets `VORSCHICHT_PROJECTS_ROOT=/opt`, which bind-mounted the host's whole
   `/opt` read-write into the orchestrator when the quick start was followed literally.
 
+- The documented restore works: `DROP DATABASE` / `CREATE DATABASE` run as two commands on a
+  connection to `postgres` (one `-c` with both is a transaction block, and a database cannot be
+  dropped from a session connected to it). `docs/OPERATIONS.md` also covers the base compose file's
+  named volumes, for the probe (`restore-probe.sh --backups`) and for the restore itself.
+- `install-host.sh` hands `backups/` to uid 10001, the user the backup image runs as, instead of
+  uid 70 — the sidecar refuses a directory it cannot write, so a fresh host install stopped there.
+- The invite CLI reads `--purpose rescue` as well as `--purpose=rescue` and refuses arguments it
+  does not know; the spelling with a space used to mint a `bootstrap` invitation without a word.
+- A self-check alert that ntfy does not accept is logged and recorded on the event
+  (`announced: false`), instead of being discarded.
+- The overview names a running auth incident as the reason behind "Keine Budgetdaten".
+- `onboard.mjs` archives the session transcript under `VORSCHICHT_TRANSCRIPTS_ROOT` instead of its
+  scratch directory, which it deletes; `--actor` has no default any more (flag or
+  `VORSCHICHT_ACTOR`, required to apply).
+- An unknown task or run id says so instead of reporting a defect in the application; the state
+  filter no longer lists "Wartet auf deine Entscheidung" twice.
+
 ### Known limitations
+
+- The onboarding procedure ("First project") has not been executed end to end in the published
+  state; it needs a subscription. `docs/OPERATIONS.md` says what was and was not run.
 
 - Phase 9 (supervised pilot operation) has not started; five gates are deferred to a target host.
 - The dashboard UI is German by specification; an English UI is an open issue.

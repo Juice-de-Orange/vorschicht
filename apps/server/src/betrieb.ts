@@ -48,7 +48,7 @@
  *     hat die Volumes gar nicht gemountet, und eine zweite Messung wäre eine
  *     zweite Wahrheit über denselben Datenträger.
  */
-import type { HealthTileView } from '@vorschicht/shared/inbox';
+import type { AuthIncidentView, HealthTileView } from '@vorschicht/shared/inbox';
 import type postgres from 'postgres';
 
 /** Die Komponenten, die `backup-run.sh` einzeln meldet (A103, `backup-pass.ts`). */
@@ -310,6 +310,80 @@ export function plattenKachel(
     state: 'ok',
     detail: `Alle überwachten Ablagen unter 80 %; die vollste steht ${wert}.${nichtLesbar}`,
     at,
+  };
+}
+
+// --- §6.1: der Auth-Vorfall ---------------------------------------------------
+
+/**
+ * Wie lange eine `auth.incident`-Zeile als **laufender** Vorfall gilt.
+ *
+ * Der Daemon schreibt während eines Vorfalls bei jedem Durchlauf eine Zeile,
+ * und zwischen zwei Durchläufen liegen fünf Minuten (`AUTH_RETRY_MS`). Das Ende
+ * eines Vorfalls schreibt **keine** Zeile — nach einer Token-Erneuerung wird der
+ * Orchestrator neu gestartet, und ein frischer Prozess weiss nichts von dem
+ * Vorfall davor. Also ist „läuft noch" eine Aussage über das Alter: zwei
+ * Durchläufe plus Spielraum. Der Preis steht im Satz selbst („zuletzt gemeldet
+ * vor …"): bis zu elf Minuten nach der Behebung steht der Streifen noch da.
+ * Die Zahl liegt hier und nicht im Daemon, aus `PLATTE_VERALTET_MS`' Grund.
+ */
+export const AUTH_VORFALL_AKTUELL_MS = 11 * 60_000;
+
+/** Wie viel von der Begründung des Daemons im Satz mitreist. */
+const AUTH_GRUND_MAX = 240;
+
+export interface AuthVorfallBeobachtung {
+  occurredAt: Date;
+  reasons: string[];
+  /** Ob der ntfy-Alarm ankam (`incident-cycle.ts`). Null bei Zeilen von davor. */
+  announced: boolean | null;
+}
+
+/** Die jüngste `auth.incident`-Zeile, oder null. */
+export async function readAuthVorfall(sql: postgres.Sql): Promise<AuthVorfallBeobachtung | null> {
+  const rows = await sql<EventRow[]>`
+    SELECT kind, occurred_at, payload FROM event_log
+    WHERE kind = 'auth.incident'
+    ORDER BY id DESC LIMIT 1
+  `;
+  const row = rows[0];
+  if (!row) return null;
+  const reasons = Array.isArray(row.payload.reasons) ? row.payload.reasons : [];
+  return {
+    occurredAt: row.occurred_at,
+    reasons: reasons.filter((entry): entry is string => typeof entry === 'string'),
+    announced: typeof row.payload.announced === 'boolean' ? row.payload.announced : null,
+  };
+}
+
+/**
+ * Der Streifen auf der Übersicht (§6.1, §17.1) — oder null, wenn kein Vorfall
+ * läuft.
+ *
+ * Er nennt den Grund für „Keine Budgetdaten" ausdrücklich: ohne diesen Halbsatz
+ * stehen zwei Meldungen untereinander, und wer sie liest, sucht zwei Ursachen.
+ */
+export function authVorfall(
+  beobachtung: AuthVorfallBeobachtung | null,
+  jetzt: number,
+): AuthIncidentView | null {
+  if (!beobachtung) return null;
+  const seit = jetzt - beobachtung.occurredAt.getTime();
+  if (seit > AUTH_VORFALL_AKTUELL_MS) return null;
+
+  const grund = beobachtung.reasons[0];
+  const gekuerzt =
+    grund && grund.length > AUTH_GRUND_MAX ? `${grund.slice(0, AUTH_GRUND_MAX)}…` : grund;
+  return {
+    at: beobachtung.occurredAt.toISOString(),
+    text:
+      `Die Anmeldung bei Claude schlägt fehl (zuletzt gemeldet ${alter(seit)}). Der Daemon ` +
+      'nimmt keine Arbeit an und misst kein Budget — deshalb gibt es auch keine Budgetdaten. ' +
+      (gekuerzt ? `Gemeldet: „${gekuerzt}" ` : '') +
+      (beobachtung.announced === false
+        ? 'Der Alarm über ntfy kam nicht an — auch dieser Weg ist zu prüfen. '
+        : '') +
+      'Token erneuern und den Orchestrator neu starten: docs/OPERATIONS.md, „Renew the OAuth token".',
   };
 }
 

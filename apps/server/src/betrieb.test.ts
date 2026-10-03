@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AUTH_VORFALL_AKTUELL_MS,
+  type AuthVorfallBeobachtung,
   alter,
+  authVorfall,
   PLATTE_VERALTET_MS,
   plattenKachel,
   SICHERUNG_VERALTET_MS,
@@ -142,5 +145,59 @@ describe('alter', () => {
     expect(alter(3 * 3_600_000)).toBe('vor 3 Stunden');
     expect(alter(5 * 86_400_000)).toBe('vor 5 Tagen');
     expect(alter(Number.NaN)).toBe('zu einem unbekannten Zeitpunkt');
+  });
+});
+
+/**
+ * §6.1 auf der Übersicht. Gefunden bei einer Funktionsprüfung mit einem Token,
+ * der sich nicht anmeldet: die Startseite sagte „Keine Budgetdaten" und sonst
+ * nichts, der Orchestrator-Container war `(healthy)`, und die Ursache stand nur
+ * in dessen Log.
+ */
+describe('der Auth-Vorfall auf der Übersicht (§6.1)', () => {
+  const vorfall = (patch: Partial<AuthVorfallBeobachtung> = {}): AuthVorfallBeobachtung => ({
+    occurredAt: new Date(JETZT - 3 * 60_000),
+    reasons: ['Die Sitzung konnte sich nicht anmelden (§6.1).'],
+    announced: true,
+    ...patch,
+  });
+
+  it('ist ohne jede Meldung kein Vorfall', () => {
+    expect(authVorfall(null, JETZT)).toBeNull();
+  });
+
+  it('nennt einen frischen Vorfall als Grund für die fehlenden Budgetdaten', () => {
+    const streifen = authVorfall(vorfall(), JETZT);
+    expect(streifen?.at).toBe(new Date(JETZT - 3 * 60_000).toISOString());
+    expect(streifen?.text).toContain('Die Anmeldung bei Claude schlägt fehl');
+    expect(streifen?.text).toContain('zuletzt gemeldet vor 3 Minuten');
+    expect(streifen?.text).toContain('deshalb gibt es auch keine Budgetdaten');
+    // Der Satz des Daemons reist mit — und was zu tun ist.
+    expect(streifen?.text).toContain('Die Sitzung konnte sich nicht anmelden');
+    expect(streifen?.text).toContain('Renew the OAuth token');
+  });
+
+  it('hält einen Vorfall nicht für laufend, wenn der Daemon ihn nicht mehr meldet', () => {
+    // Das Ende schreibt keine Zeile; „läuft noch" ist eine Aussage über das Alter.
+    const gerade = vorfall({ occurredAt: new Date(JETZT - AUTH_VORFALL_AKTUELL_MS) });
+    const vorbei = vorfall({ occurredAt: new Date(JETZT - AUTH_VORFALL_AKTUELL_MS - 1) });
+    expect(authVorfall(gerade, JETZT)).not.toBeNull();
+    expect(authVorfall(vorbei, JETZT)).toBeNull();
+  });
+
+  it('sagt dazu, wenn der ntfy-Alarm nicht ankam — und nur dann', () => {
+    expect(authVorfall(vorfall({ announced: false }), JETZT)?.text).toContain(
+      'Der Alarm über ntfy kam nicht an',
+    );
+    expect(authVorfall(vorfall(), JETZT)?.text).not.toContain('ntfy');
+    // Zeilen von vor dieser Angabe: unbekannt ist keine Behauptung.
+    expect(authVorfall(vorfall({ announced: null }), JETZT)?.text).not.toContain('ntfy');
+  });
+
+  it('kommt ohne Begründung aus und kürzt eine überlange', () => {
+    expect(authVorfall(vorfall({ reasons: [] }), JETZT)?.text).not.toContain('Gemeldet:');
+    const lang = authVorfall(vorfall({ reasons: ['x'.repeat(1000)] }), JETZT);
+    expect(lang?.text).toContain(`${'x'.repeat(240)}…`);
+    expect(lang?.text).not.toContain('x'.repeat(241));
   });
 });
