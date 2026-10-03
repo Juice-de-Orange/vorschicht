@@ -370,6 +370,7 @@
   color: var(--tinte-leise);
 }
 
+/* biome-ignore lint/style/noDescendingSpecificity: .kennzahlen (a <ul>) and .blase (a <p>) are separate components; no <strong> matches both. */
 .kennzahlen > li strong {
   display: block;
   font-family: var(--schrift-text);
