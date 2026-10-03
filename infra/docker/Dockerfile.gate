@@ -84,7 +84,7 @@ RUN set -eux; \
 # when the two drift: a deps list from a different release is the kind of
 # mismatch that surfaces as one missing shared library at the first browser
 # launch, months later.
-ARG PLAYWRIGHT_DEPS_VERSION=1.62.1
+ARG PLAYWRIGHT_DEPS_VERSION=1.63.0
 RUN npx --yes "playwright@${PLAYWRIGHT_DEPS_VERSION}" install-deps chromium \
  && rm -rf /var/lib/apt/lists/* /root/.npm
 
