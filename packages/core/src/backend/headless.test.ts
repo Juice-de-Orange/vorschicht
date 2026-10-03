@@ -467,6 +467,43 @@ describe('classification', () => {
     expect(events.at(-1)).toMatchObject({ type: 'terminated', reason: 'auth_incident' });
   });
 
+  it('calls a 401 the CLI reports as its result an auth incident too (§6.1)', async () => {
+    // The frame the pinned CLI (2.1.220) really sends for a rejected OAuth
+    // token, captured with a placeholder token: an ordinary result, `subtype`
+    // "success", the refusal as its text, exit code 1 and **nothing on
+    // stderr**. Matching stderr alone turned a dead token into `completed` with
+    // a string for a result — "Ergebnis erfüllt den Rollenvertrag nicht".
+    const events = await collect(
+      [
+        {
+          type: 'result',
+          subtype: 'success',
+          is_error: true,
+          api_error_status: 401,
+          terminal_reason: 'api_error',
+          result: 'Failed to authenticate. API Error: 401 OAuth access token is invalid.',
+          usage: { input_tokens: 0, output_tokens: 0 },
+        },
+      ],
+      spec(),
+      { VORSCHICHT_STUB_EXIT: '1' },
+    );
+    expect(events.at(-1)).toMatchObject({ type: 'terminated', reason: 'auth_incident' });
+  });
+
+  it('accuses nobody when an honest result merely mentions a 401', async () => {
+    const events = await collect([
+      {
+        type: 'result',
+        subtype: 'success',
+        is_error: false,
+        result: 'The endpoint answers 401 without a session; Failed to authenticate is the text.',
+        usage: { input_tokens: 1, output_tokens: 2 },
+      },
+    ]);
+    expect(events.at(-1)).toMatchObject({ type: 'terminated', reason: 'completed' });
+  });
+
   it('reports a non-zero exit with no known cause as crashed', async () => {
     const events = await collect([], spec(), { VORSCHICHT_STUB_EXIT: '3' });
     expect(events.at(-1)).toMatchObject({ type: 'terminated', reason: 'crashed', exitCode: 3 });

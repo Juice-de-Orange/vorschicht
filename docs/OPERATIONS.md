@@ -68,6 +68,87 @@ enough for everything, and `down -v` would take the volumes with it.
 `restart: unless-stopped`. The watchdog timer additionally fires two minutes
 after boot (`OnBootSec=2min`).
 
+**The project name is fixed.** `infra/docker-compose.yml` sets `name: vorschicht`,
+so the containers are `vorschicht-db-1`, `vorschicht-app-1`, … and the network
+is `vorschicht_default` wherever the checkout lives. This document and the
+`*-remote.sh` scripts (`onboard-remote.sh`, `audit-remote.sh`,
+`kennzahlen-remote.sh`, `budgetfenster-remote.sh`) address the containers by
+those names. Two stacks on one host collide on them; a second one has to be
+started with `docker compose -p <other-name> …` on every command, and those
+scripts will then not find it.
+
+---
+
+## First project (onboarding, §20)
+
+A fresh stack has no project, and nothing in the dashboard creates one. The
+one exception is the studio's own checkout: found at `/projects/vorschicht`
+(that is, `<projects root>/vorschicht` on the host), it registers itself at
+start without a session (A42); otherwise the log says "Kein selbstverwaltetes
+Projekt" and the internal audit does not run. Every other project is created by applying an **onboarding proposal**: a session reads the
+repository and proposes its gates, claim granularity and deployment method;
+`verifyProposal` checks the proposal against the repository's real manifests;
+you read it; only then is the project row written (A41: dry run first, applying
+is a separate act).
+
+**This needs the Claude subscription.** The analysis is one real Claude Code
+session at the strongest tier and spends subscription budget. With the
+`.env.example` placeholder as `CLAUDE_CODE_OAUTH_TOKEN` it ends as an auth
+incident: exit code 2, no proposal.
+
+**Before you start**
+
+- The repository must be a git checkout **below the projects root**
+  (`VORSCHICHT_PROJECTS_ROOT` on the host, mounted at `/projects` in the
+  orchestrator). The project row stores the path the *orchestrator* sees
+  (`/projects/<directory>`), not the host path.
+- `<repo>/.git` must belong to uid **10001** — the orchestrator runs as that
+  user and creates the task worktrees there. `onboard-remote.sh` refuses
+  otherwise and prints the `chown`.
+
+**On the host the stack runs on** — `infra/scripts/onboard-remote.sh`, run from
+any machine that reaches the host by non-interactive SSH. It expects the stack
+checkout at `/opt/vorschicht` on the host (`VORSCHICHT_REMOTE_ROOT`), its
+`.env` with the token, the running container `vorschicht-orchestrator-1` and
+the network `vorschicht_default` (`VORSCHICHT_REMOTE_NET`):
+
+```bash
+# 1. Dry run: one session, mounts the repository read-only, creates nothing
+infra/scripts/onboard-remote.sh --host <host> \
+  --repo /opt/example-app --slug example-app --name "Example App"
+
+# 2. Read the proposal: docs/onboarding/example-app.md in the stack checkout on
+#    the host, and the card in the inbox. The document names the run id ("Lauf").
+
+# 3. Apply exactly that proposal — no second session
+infra/scripts/onboard-remote.sh --host <host> --apply-lauf <runId> --actor <your-name>
+```
+
+The script sets `--path` itself, to `/projects/<basename of --repo>`; that only
+matches what the orchestrator sees if `--repo` is a direct child of the
+projects root. Add `--read-only` to step 1 for a project the studio may analyse
+but never write to. Step 3 refuses a proposal the verification rejected.
+
+**From a checkout** — `pnpm onboard` (`infra/scripts/onboard.sh`) runs the same
+analysis with the `claude` CLI on your `PATH`:
+
+```bash
+pnpm onboard -- --path /abs/path/to/repo --slug example-app --name "Example App" --read-only
+```
+
+Without `DATABASE_URL` in the environment it uses a throwaway Postgres: the
+proposal document is written to `docs/onboarding/<slug>.md`, but nothing
+reaches the stack's database, so there is nothing to apply later. It is the way
+to see what a proposal looks like, not the way to add a project to a running
+stack — for that the run has to write to the stack's database and `--path` has
+to be the path the orchestrator sees, which is what `onboard-remote.sh`
+arranges.
+
+Exit codes of both: **0** proposal stands (or was applied) · **1** the
+verification refused the proposal · **2** infra, nothing was analysed (this
+includes a token that does not authenticate) · **3** the session ran and
+delivered nothing usable.
+
 ---
 
 ## Restore a backup
@@ -147,6 +228,15 @@ vc restart orchestrator
 vc logs --tail 30 orchestrator     # the self-check must pass (§6.1)
 ```
 
+**What a token that does not authenticate looks like.** `claude auth status`
+reports `loggedIn` for any token that is set, so the first thing to notice is
+the start-up probe (§6.1). Its failure is an auth incident like any other: the
+log says `Selbstprüfung rot` with "Die Sitzung konnte sich nicht anmelden",
+`event_log` gets an `auth.incident`, `vorschicht-alerts` gets "Auth-Vorfall —
+Daemon nimmt keine Arbeit an", and the probe is repeated every five minutes.
+`Selbstprüfung bestanden — Daemon ist bereit.` does not appear until a session
+has authenticated.
+
 The token lives **only** in the auth volume and in the `.env` on this host
 (A5). Carrying it elsewhere for a run is not a path this project knows — which
 is also why the internal audit runs on the production host and not locally
@@ -163,8 +253,12 @@ any passkey anyway.
 ```bash
 ssh <host>
 cd /opt/vorschicht
-vc exec orchestrator node dist/cli/invite.js --purpose rescue
+vc exec app node dist/cli/invite.js --purpose=rescue
 ```
+
+The CLI is part of the **`app`** image; the orchestrator image does not contain
+it. The purpose has to be written with `=`: the CLI reads `--purpose=<value>`
+only, and anything else falls back to an ordinary `bootstrap` invitation.
 
 This prints **one** link. Open it on the device that is to receive the new
 passkey, enter a device name, register.
@@ -175,7 +269,7 @@ passkey, enter a device name, register.
 * It is stored only as a hash. A lost link cannot be recovered; generate a new
   one.
 
-**Without `--purpose rescue`** the same command produces an ordinary invitation
+**Without `--purpose=rescue`** the same command produces an ordinary invitation
 for an additional device. §19 requires **two** credentials before registration
 locks; whether any are on file is answered by a route that responds without a
 session:

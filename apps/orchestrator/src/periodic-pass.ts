@@ -19,12 +19,12 @@
  *    estimator an event back to fix that would reinstate exactly the
  *    dependency A101 deleted and write a permanent row every minute, which is
  *    the flood A98 and A101 both ended.
- *  * `nextEstimateAt` and `smokeNotBefore` are also **order**, not cadence:
- *    `main.ts` argues at length that the estimate must run *before* the
+ *  * `nextEstimateAt` and the probe backoff (`SmokeGate`) are also **order**,
+ *    not cadence: `main.ts` argues at length that the estimate must run *before* the
  *    guardian is consulted and the smoke probe before both (A58). A generic
  *    pass in the loop body would silently retire that ordering, and no test
  *    would see it, because both calls would still happen.
- *  * `smokeNotBefore` is a backoff behind a one-shot latch, not a recurrence.
+ *  * the probe backoff is a backoff behind a one-shot latch, not a recurrence.
  *  * `nextMailAt` belongs to `notifications-pass.ts`, which owns both halves of
  *    A13 together and reports them as one outcome.
  *

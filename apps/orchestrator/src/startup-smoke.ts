@@ -41,6 +41,7 @@ import {
   type UsageMeter,
 } from '@vorschicht/core';
 import type { RoleResult } from '@vorschicht/shared';
+import type { CheckResult } from './self-check.js';
 
 /**
  * Exactly the call this module makes, and no more.
@@ -64,6 +65,15 @@ export interface SmokeResult {
   runId: string | null;
   /** Did the probe actually produce a budget reading (§7.1)? */
   sampled: boolean;
+  /**
+   * The session could not authenticate (§6.1).
+   *
+   * Kept apart from every other way a probe can fail because the response is a
+   * different one: not "try again in five minutes" but the auth-incident path —
+   * `auth.incident` in the log, the alert that names the token, and a daemon
+   * that says it is idle instead of saying it is ready.
+   */
+  authIncident: boolean;
 }
 
 export interface SmokeDeps {
@@ -111,6 +121,7 @@ export async function runStartupSmoke(deps: SmokeDeps): Promise<SmokeResult> {
         problem: `Startprobe (§6.1) fehlgeschlagen: ${outcome.problem}`,
         runId: outcome.run.runId,
         sampled: false,
+        authIncident: outcome.status === 'auth_incident',
       };
     }
 
@@ -134,6 +145,7 @@ export async function runStartupSmoke(deps: SmokeDeps): Promise<SmokeResult> {
       problem: null,
       runId: outcome.run.runId,
       sampled: usable.length > 0,
+      authIncident: false,
     };
   } catch (error) {
     return {
@@ -141,6 +153,7 @@ export async function runStartupSmoke(deps: SmokeDeps): Promise<SmokeResult> {
       problem: `Startprobe (§6.1) konnte nicht ausgeführt werden: ${(error as Error).message}`,
       runId: null,
       sampled: false,
+      authIncident: false,
     };
   }
 }
@@ -156,6 +169,10 @@ export async function smokeAndReport(deps: SmokeDeps): Promise<SmokeResult> {
 
   if (!result.ok) {
     deps.logger?.warn({ runId: result.runId }, result.problem ?? 'Startprobe fehlgeschlagen');
+    // An auth failure is reported by `selfCheckCycle`, which `SmokeGate` hands
+    // it to as a failed check: one alert that says "Auth-Vorfall", not that one
+    // plus a second calling the same dead token a failed probe.
+    if (result.authIncident) return result;
     await deps.notifier
       ?.send({
         topic: 'alerts',
@@ -197,4 +214,51 @@ export async function smokeAndReport(deps: SmokeDeps): Promise<SmokeResult> {
 
   deps.logger?.info({ runId: result.runId }, 'Startprobe bestanden — Budget gelesen (§6.1)');
   return result;
+}
+
+/**
+ * The probe as one more self-check, with the memory the loop needs.
+ *
+ * `claude auth status` cannot see a rejected token: it reports `loggedIn` for
+ * any `CLAUDE_CODE_OAUTH_TOKEN` that is set at all, valid or not. The first
+ * thing that finds out is this session — so a probe that failed on
+ * authentication has to reach `selfCheckCycle` as a failed check, or the cycle
+ * logs "Selbstprüfung bestanden — Daemon ist bereit." every fifteen seconds
+ * above a daemon that takes no work (observed on a fresh install with the
+ * `.env.example` placeholder still in place).
+ *
+ * Only the auth failure is handed on. Every other failed probe keeps the
+ * response it had — its own alert and a retry after `SMOKE_RETRY_MS`.
+ */
+export class SmokeGate {
+  /** §6.1: no work is accepted until one session has demonstrably run. */
+  passed = false;
+  /** Backoff after a failed probe — retrying every tick would spend a session
+   * every fifteen seconds against a host that has just proved it cannot run one. */
+  private notBefore = 0;
+  /** The last probe's auth failure, repeated until a probe passes. */
+  private authProblem: string | null = null;
+
+  constructor(
+    private readonly probe: () => Promise<SmokeResult>,
+    private readonly now: () => number = Date.now,
+  ) {}
+
+  /** Run the probe if one is due, and say what it means for the self-check. */
+  async check(): Promise<CheckResult> {
+    if (this.passed) return { ok: true };
+    if (this.now() >= this.notBefore) {
+      const smoke = await this.probe();
+      if (smoke.ok) {
+        this.passed = true;
+        this.authProblem = null;
+        return { ok: true };
+      }
+      this.notBefore = this.now() + SMOKE_RETRY_MS;
+      this.authProblem = smoke.authIncident
+        ? (smoke.problem ?? 'Startprobe (§6.1): Auth-Vorfall')
+        : null;
+    }
+    return this.authProblem === null ? { ok: true } : { ok: false, reason: this.authProblem };
+  }
 }

@@ -6,9 +6,18 @@
  * not be read, the probe ran and the meter is seeded. They need different
  * responses and from outside they all look like a studio doing nothing.
  */
+
+import { classifyRun } from '@vorschicht/core';
 import type { UsageSample } from '@vorschicht/shared';
 import { describe, expect, it, vi } from 'vitest';
-import { runStartupSmoke, type SmokeRunner, smokeAndReport } from './startup-smoke.js';
+import { isAuthIncident, selfCheckCycle } from './incident-cycle.js';
+import {
+  runStartupSmoke,
+  SMOKE_RETRY_MS,
+  SmokeGate,
+  type SmokeRunner,
+  smokeAndReport,
+} from './startup-smoke.js';
 
 type RunFn = SmokeRunner['run'];
 type Outcome = Awaited<ReturnType<RunFn>>;
@@ -43,6 +52,20 @@ function blindSample(): UsageSample {
     source: 'estimated',
     anomaly: { kind: 'unavailable' },
   } as UsageSample;
+}
+
+/**
+ * What the runner returns for a session the vendor refused to authenticate.
+ *
+ * The sentence comes from `classifyRun` and is not written out here, for the
+ * reason `incident-cycle.test.ts` gives: `isAuthIncident` is a regular
+ * expression over German prose, and a paraphrase would keep matching after the
+ * real wording had stopped.
+ */
+function authOutcome(): Outcome {
+  const signals = { termination: 'auth_incident' } as Parameters<typeof classifyRun>[0];
+  const verdict = classifyRun(signals);
+  return outcome({ status: verdict.status, problem: verdict.problem } as Partial<Outcome>);
 }
 
 /** A notifier that records what would have been pushed. */
@@ -120,6 +143,21 @@ describe('Startprobe (§6.1)', () => {
     expect(result.problem).toMatch(/CLI nicht gefunden/);
   });
 
+  it('trennt den Anmeldefehler von jedem anderen Scheitern der Probe', async () => {
+    const auth = await runStartupSmoke({
+      runner: { run: async () => authOutcome() },
+      cwd: '/tmp/smoke',
+    });
+    expect(auth.ok).toBe(false);
+    expect(auth.authIncident).toBe(true);
+
+    const other = await runStartupSmoke({
+      runner: { run: async () => outcome({ status: 'infra', problem: 'CLI nicht gefunden' }) },
+      cwd: '/tmp/smoke',
+    });
+    expect(other.authIncident).toBe(false);
+  });
+
   it('macht auch aus einer geworfenen Ausnahme keinen Absturz', async () => {
     // A probe that throws would take down the daemon whose health it reports —
     // the check becoming the outage.
@@ -148,6 +186,17 @@ describe('Startprobe (§6.1)', () => {
       ]);
     });
 
+    it('überlässt den Alarm zum Anmeldefehler dem Auth-Vorfall, statt doppelt zu melden', async () => {
+      const push = notifier();
+      const result = await smokeAndReport({
+        runner: { run: async () => authOutcome() },
+        cwd: '/tmp/smoke',
+        notifier: push,
+      });
+      expect(result.authIncident).toBe(true);
+      expect(push.sent).toEqual([]);
+    });
+
     it('meldet ein nicht lesbares Budget als Information, nicht als Alarm', async () => {
       const push = notifier();
       await smokeAndReport({
@@ -169,5 +218,95 @@ describe('Startprobe (§6.1)', () => {
       });
       expect(push.sent).toEqual([]);
     });
+  });
+});
+
+describe('Startprobe als Selbstprüfung (§6.1)', () => {
+  const silentLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+
+  /** The gate over a scripted sequence of runner outcomes, with a clock to move. */
+  function gate(script: Outcome[]) {
+    const clock = { now: 1_000_000 };
+    const run = vi.fn(async () => script[Math.min(run.mock.calls.length - 1, script.length - 1)]);
+    const smokeGate = new SmokeGate(
+      () => smokeAndReport({ runner: { run: run as unknown as RunFn }, cwd: '/tmp/smoke' }),
+      () => clock.now,
+    );
+    return { smokeGate, run, clock };
+  }
+
+  it('reicht den Anmeldefehler der Probe als gescheiterte Prüfung weiter', async () => {
+    const { smokeGate } = gate([authOutcome()]);
+    const check = await smokeGate.check();
+
+    expect(check.ok).toBe(false);
+    expect(smokeGate.passed).toBe(false);
+    // The classification the cycle will make of it, on the real sentence.
+    expect(isAuthIncident([check as { ok: false; reason: string }])).toBe(true);
+  });
+
+  it('meldet bei ungültigem Token einen Auth-Vorfall und nicht „bereit"', async () => {
+    // The defect, end to end: `claude auth status` passes for any token that is
+    // set, the probe is the first thing to find out — and the cycle used to log
+    // "Selbstprüfung bestanden — Daemon ist bereit." every pass above a daemon
+    // that took no work, with no `auth.incident` in the log.
+    const { smokeGate } = gate([authOutcome()]);
+    const info = vi.fn();
+    const appendEvent = vi.fn(
+      async (_kind: 'auth.incident' | 'system.selfcheck_failed', _reasons: string[]) => undefined,
+    );
+    const send = vi.fn(async (_message: { topic: string; title: string }) => undefined);
+    const onReady = vi.fn(async () => undefined);
+
+    const cycle = await selfCheckCycle(
+      {
+        runChecks: async () => [{ ok: true }, await smokeGate.check()],
+        wrapUp: { parkAll: async () => [], resumeAll: async () => [] },
+        notifier: { send },
+        appendEvent,
+        onReady,
+        logger: { ...silentLogger, info },
+        retryMs: 300_000,
+        readyMs: 15_000,
+      },
+      { authIncidentParked: false },
+    );
+
+    expect(cycle.ready).toBe(false);
+    expect(cycle.authIncident).toBe(true);
+    expect(appendEvent.mock.calls[0]?.[0]).toBe('auth.incident');
+    expect(send.mock.calls[0]?.[0].title).toMatch(/Auth-Vorfall/);
+    expect(onReady).not.toHaveBeenCalled();
+    expect(info.mock.calls.map((call) => call[1])).not.toContain(
+      'Selbstprüfung bestanden — Daemon ist bereit.',
+    );
+  });
+
+  it('wiederholt den Befund während der Wartezeit, ohne eine weitere Sitzung zu starten', async () => {
+    const { smokeGate, run, clock } = gate([authOutcome()]);
+    await smokeGate.check();
+    clock.now += SMOKE_RETRY_MS - 1;
+
+    expect((await smokeGate.check()).ok).toBe(false);
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it('gibt nach einem neuen Token frei und fragt danach nie wieder', async () => {
+    const { smokeGate, run, clock } = gate([authOutcome(), outcome()]);
+    await smokeGate.check();
+    clock.now += SMOKE_RETRY_MS;
+
+    expect(await smokeGate.check()).toEqual({ ok: true });
+    expect(smokeGate.passed).toBe(true);
+    await smokeGate.check();
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+
+  it('lässt jedes andere Scheitern der Probe bei Alarm und Wiederholung, ohne Auth-Vorfall', async () => {
+    const { smokeGate } = gate([outcome({ status: 'infra', problem: 'CLI nicht gefunden' })]);
+
+    expect(await smokeGate.check()).toEqual({ ok: true });
+    // Not ready for work either — `main.ts` asks `passed` before the scheduler.
+    expect(smokeGate.passed).toBe(false);
   });
 });

@@ -95,7 +95,8 @@ cd vorschicht
 pnpm install
 
 cp .env.example .env && chmod 600 .env
-$EDITOR .env          # POSTGRES_PASSWORD, SESSION_SECRET, CLAUDE_CODE_OAUTH_TOKEN, NTFY_*, PUBLIC_ORIGIN
+$EDITOR .env          # POSTGRES_PASSWORD, SESSION_SECRET, CLAUDE_CODE_OAUTH_TOKEN, NTFY_*,
+                      # PUBLIC_ORIGIN, WEBAUTHN_RP_ID; VORSCHICHT_PROJECTS_ROOT on a real host
 
 docker compose -f infra/docker-compose.yml --env-file .env up -d --build
 curl http://127.0.0.1:8420/healthz
@@ -109,6 +110,24 @@ and `WEBAUTHN_RP_ID=localhost` work; for a real host put nginx in front (templat
 installer `infra/scripts/install-host.sh`, host-specific volumes in
 `infra/docker-compose.override.example.yml`). Operations — start/stop, backups, token renewal,
 passkey rescue, the watchdog, disk space — are in [`docs/OPERATIONS.md`](docs/OPERATIONS.md).
+
+`VORSCHICHT_PROJECTS_ROOT` is the host directory the orchestrator gets **read-write** at `/projects`.
+Unset, the base compose file uses `infra/.vorschicht-data/projects` inside the checkout; on a real
+host point it at a directory that holds project checkouts and nothing else — never `/opt` or a home
+directory as a whole.
+
+The compose project name is fixed to `vorschicht` (`name:` in `infra/docker-compose.yml`): containers
+are `vorschicht-<service>-1`, volumes `vorschicht_*`, and the operations scripts address them by
+those names. A second stack on the same host therefore needs `docker compose -p <other-name> …` on
+every command, and the `*-remote.sh` scripts will not find it.
+
+### First project
+
+A healthy stack has no project of yours yet, and the dashboard cannot create one. Projects come in through
+the onboarding analysis (§20): `infra/scripts/onboard-remote.sh` on the host the stack runs on, or
+`pnpm onboard` from a checkout. Both start a real Claude Code session — **this step needs the Claude
+subscription** and spends its budget. The procedure is in
+[`docs/OPERATIONS.md`](docs/OPERATIONS.md#first-project-onboarding-20).
 
 **Account prerequisite (do this once):** in your Anthropic account, usage credits / extra usage must
 be **disabled or capped at 0**. Vorschicht refuses to start if `ANTHROPIC_API_KEY` is set at all, but
@@ -142,12 +161,15 @@ Everything runs in containers: the gate is a POSIX tool by design and its image 
 image's sibling (same node digest, same pinned gitleaks and CLI, unprivileged uid).
 
 ```bash
-infra/scripts/gate-in-container.sh              # all twelve gate steps, ~6 min
+infra/scripts/gate-in-container.sh              # all twelve gate steps, ~6 min on a warm cache
 infra/scripts/gate-in-container.sh --only=lint  # one or more steps (build first: --only=typecheck,lint)
 infra/scripts/with-test-db.sh pnpm vitest run   # unit + Postgres integration tests
 pnpm fix                                        # Biome formatting
 infra/scripts/demo-phase3.sh                    # the scripted evidence behind one phase's exit gates
 ```
+
+The first run is cold: it builds the gate image and fills the pnpm store and the Playwright browser
+volume, and takes several times as long (about 20 minutes on the machine it was last measured on).
 
 Details, the paid checks (`pnpm check:*` — they start real sessions and cost subscription budget) and
 the screenshot scripts are in [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).

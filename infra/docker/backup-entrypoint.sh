@@ -1,9 +1,10 @@
 #!/bin/sh
 # Renders the crontab from BACKUP_CRON and hands over to supercronic.
 #
-# The first run happens immediately rather than waiting until 02:30, so a fresh
-# stack proves the backup path works while someone is still watching — and so
-# the healthcheck has a `.last-run` to look at within its start period.
+# The first run happens at start (once the schema is migrated, see below)
+# rather than waiting until 02:30, so a fresh stack proves the backup path
+# works while someone is still watching — and so the healthcheck has a
+# `.last-run` to look at before its first counted probe.
 set -eu
 
 CRON_SPEC="${BACKUP_CRON:-30 2 * * *}"
@@ -49,7 +50,42 @@ printf '%s /usr/local/bin/backup-run.sh\n' "$CRON_SPEC" > "$CRONTAB"
 
 echo "backup: Zeitplan '${CRON_SPEC}' (TZ=${TZ:-UTC})"
 
+# How many migrations the database has recorded; empty while the table does
+# not exist yet (or the database cannot be asked).
+migrations_applied() {
+  psql -X -q -t -A -c 'SELECT count(*) FROM _vorschicht_migrations' 2>/dev/null || true
+}
+
+# The first run must not win the race against the orchestrator's migrations.
+#
+# Both containers start as soon as `db` is healthy, and on a fresh installation
+# this one was faster: it dumped a database with no schema in it — 822 bytes,
+# zero tables — and reported `outcome=ok`, which the daemon turned into
+# `backup.succeeded`. A proof of the backup path that proves an empty file.
+#
+# So wait until the migration table exists and its row count has stopped
+# moving. Bounded, and well inside the healthcheck's patience (first counted
+# probe at 60 s): a stack whose orchestrator never comes up still gets its
+# first run, and the log says what that dump is worth.
+wait_for_schema() {
+  waited=0
+  last=''
+  while [ "$waited" -lt 40 ]; do
+    now="$(migrations_applied)"
+    if [ -n "$now" ] && [ "$now" != '0' ] && [ "$now" = "$last" ]; then
+      echo "backup: Schema steht ($now Migrationen)"
+      return 0
+    fi
+    last="$now"
+    sleep 2
+    waited=$((waited + 2))
+  done
+  echo 'backup: nach 40 s noch kein migriertes Schema — der erste Lauf sichert' >&2
+  echo 'die Datenbank, wie sie ist; ein leerer Dump beweist dann nur den Pfad.' >&2
+}
+
 if [ ! -f /backups/.last-run ]; then
+  wait_for_schema
   echo 'backup: erster Lauf startet sofort, damit der Pfad sofort bewiesen ist'
   /usr/local/bin/backup-run.sh || echo 'backup: erster Lauf fehlgeschlagen — siehe Log' >&2
 fi

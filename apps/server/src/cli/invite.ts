@@ -6,7 +6,12 @@
  * why it lives here and not behind an HTTP endpoint: whoever can run it already
  * has shell access to the production host, and no passkey outranks that.
  *
- *   docker compose exec orchestrator node dist/cli/invite.js [--purpose rescue]
+ *   docker compose -f infra/docker-compose.yml --env-file .env \
+ *     exec app node dist/cli/invite.js [--purpose=rescue]
+ *
+ * In the `app` service: this file is built into that image and into no other.
+ * There is no `vorschicht-invite` binary on the host — the name is this
+ * module's, not a command.
  *
  * The token is printed exactly once. It is stored only as a hash, so a lost
  * token cannot be recovered — mint a new one.

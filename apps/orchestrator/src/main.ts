@@ -97,7 +97,7 @@ import {
   parseAuthStatus,
 } from './self-check.js';
 import { newSourcesPassState, runSourcesPass } from './sources-pass.js';
-import { SMOKE_RETRY_MS, smokeAndReport } from './startup-smoke.js';
+import { SmokeGate, smokeAndReport } from './startup-smoke.js';
 import { assessTokenAge, readTokenInstall } from './token-age.js';
 import { WorkGate } from './work-gate.js';
 import { checkWritablePaths, repairAdvice } from './writable-paths.js';
@@ -707,11 +707,11 @@ async function main(): Promise<void> {
   let lastTokenUrgency: string | null = null;
   let authIncidentParked = false;
   let lastWorktreeGc = 0;
-  /** §6.1: no work is accepted until one session has demonstrably run. */
-  let smokePassed = false;
-  /** Backoff after a failed probe — retrying every tick would spend a session
-   * every fifteen seconds against a host that has just proved it cannot run one. */
-  let smokeNotBefore = 0;
+  /** §6.1: no work is accepted until one session has demonstrably run. The
+   * backoff after a failed probe lives in the gate. */
+  const smokeGate = new SmokeGate(() =>
+    smokeAndReport({ runner, cwd: `${config.runsRoot}/smoke`, meter, notifier, logger }),
+  );
   /** §7.1's estimate runs on its own, slower cadence than the tick. */
   let nextEstimateAt = 0;
   /** Logged only when it changes — an unchanged number every minute is noise. */
@@ -1180,7 +1180,21 @@ async function main(): Promise<void> {
 
     const outcome = await selfCheckCycle(
       {
-        runChecks: () => runSelfChecks(config.claudeCliVersion),
+        runChecks: async () => {
+          const checks = await runSelfChecks(config.claudeCliVersion);
+          if (checks.some((check) => !check.ok)) return checks;
+          // §6.1: "a 1-turn smoke session must succeed before the daemon accepts
+          // work". It also seeds §7.1's meter, which is the reason it has to run
+          // *before* the guardian is consulted rather than behind it — see
+          // `startup-smoke.ts` for the circle it breaks (A58).
+          //
+          // Among the checks rather than in `onReady`, because it is the only
+          // one of them that notices a rejected token: `claude auth status`
+          // answers `loggedIn` for any token that is set. A probe that fails on
+          // authentication is therefore a failed self-check — an auth incident
+          // — and not a daemon that is "bereit" (`SmokeGate`).
+          return [...checks, await smokeGate.check()];
+        },
         wrapUp,
         notifier,
         appendEvent: async (kind, reasons) => {
@@ -1209,25 +1223,9 @@ async function main(): Promise<void> {
           }
           await maybeCollectWorktrees();
 
-          // §6.1: "a 1-turn smoke session must succeed before the daemon accepts
-          // work". It also seeds §7.1's meter, which is the reason it has to run
-          // *before* the guardian is consulted rather than behind it — see
-          // `startup-smoke.ts` for the circle it breaks (A58).
-          if (!smokePassed && Date.now() >= smokeNotBefore) {
-            const smoke = await smokeAndReport({
-              runner,
-              cwd: `${config.runsRoot}/smoke`,
-              meter,
-              notifier,
-              logger,
-            });
-            if (!smoke.ok) {
-              smokeNotBefore = Date.now() + SMOKE_RETRY_MS;
-              return;
-            }
-            smokePassed = true;
-          }
-          if (!smokePassed) return;
+          // A probe that failed for any other reason than authentication: no
+          // work, and the next attempt after its backoff (`runChecks` above).
+          if (!smokeGate.passed) return;
 
           // §7.1's estimate, refreshed before the guardian is asked anything.
           //
