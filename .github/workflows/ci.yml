@@ -87,6 +87,11 @@ jobs:
           # The onboarding self-survey reads the integration branch from
           # `refs/remotes/origin/HEAD`, which actions/checkout does not create.
           git remote set-head origin main
+          # Pull-request runs check out a detached merge commit; tests that read the current
+          # branch (`git symbolic-ref --short HEAD`) need a named one, as on a push to main.
+          if ! git symbolic-ref -q HEAD >/dev/null; then
+            git switch -c "pr/${GITHUB_HEAD_REF:-merge}"
+          fi
 
       - run: pnpm install --frozen-lockfile
 
