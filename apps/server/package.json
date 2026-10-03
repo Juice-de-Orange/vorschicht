@@ -16,7 +16,7 @@
     "@vorschicht/core": "workspace:*",
     "@vorschicht/db": "workspace:*",
     "@vorschicht/shared": "workspace:*",
-    "hono": "^4.13.2",
+    "hono": "^4.13.7",
     "pino": "^10.0.0",
     "postgres": "^3.4.9",
     "zod": "^4.1.13"
