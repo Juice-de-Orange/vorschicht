@@ -29,6 +29,6 @@
     "@vorschicht/shared": "workspace:*",
     "pg-boss": "^11.0.4",
     "postgres": "^3.4.9",
-    "zod": "^4.1.13"
+    "zod": "^4.6.5"
   }
 }
