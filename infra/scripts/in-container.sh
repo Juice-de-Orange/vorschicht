@@ -147,7 +147,8 @@ echo "▶ Arbeitsbaum übertragen und Kommando fahren"
 
         # The browsers are installed by the projects own playwright, so the
         # binary always matches the lockfile and there is no second version to
-        # keep in step. Only on first use: the volume outlives the container.
+        # keep in step. The volume outlives the container, so most runs find
+        # the browser already there.
         #
         # A149: gefragt wird nach einem **ausfuehrbaren Browser**, nicht nach
         # einem nichtleeren Verzeichnis. Ein abgebrochener Download — hier: die
@@ -157,11 +158,25 @@ echo "▶ Arbeitsbaum übertragen und Kommando fahren"
         # nicht und meldete INFRA, also blockierte sie nichts, waehrend fuenf
         # angehakte Gates auf ihr ruhen. Eine Pruefung, die "installiert" nicht
         # von "halb installiert" unterscheidet, ist keine.
-        if ! ls /ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux*/chrome-headless-shell >/dev/null 2>&1; then
-          echo "▶ Playwright-Browser einmalig installieren"
-          rm -rf /ms-playwright/.links
-          pnpm exec playwright install chromium
-        fi
+        #
+        # And it has to be the browser *this* lockfile wants, not any browser.
+        # The check that replaced `ls -A` globbed `chromium_headless_shell-*`,
+        # which also matches the previous release: after the bump to 1.64 a
+        # volume holding 1.63s `chromium_headless_shell-1243` skipped the
+        # install, and every browser case died with "Executable doesnt exist at
+        # /ms-playwright/chromium_headless_shell-1248/..." — reported as INFRA,
+        # so again nothing was checked and nothing blocked.
+        #
+        # So the question goes to playwright on every run, because only it
+        # knows the revision it expects. `install` is idempotent: it skips any
+        # browser whose directory carries the `INSTALLATION_COMPLETE` marker,
+        # downloads nothing in that case, and takes two to three seconds. A download
+        # that broke off never wrote the marker, so A149s case is covered by
+        # the same call. Revisions no live playwright refers to any more are
+        # removed by its own garbage collection, so the volume does not grow
+        # with every bump.
+        echo "▶ Playwright-Browser pruefen (laedt nur, was der Lockfile-Version fehlt)"
+        pnpm exec playwright install chromium
 
         exec "$@"
       ' in-container "$@"

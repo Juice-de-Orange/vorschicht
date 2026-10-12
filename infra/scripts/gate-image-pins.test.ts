@@ -75,4 +75,17 @@ describe('Dockerfile.gate — die Pins gegen ihre Quellen (A117)', () => {
     expect(gate).not.toMatch(/playwright install(?!-deps)/);
     expect(runner).toContain('pnpm exec playwright install chromium');
   });
+
+  it('lässt Playwright entscheiden, ob der Browser im Volume der richtige ist', async () => {
+    // The browser volume outlives every lockfile bump. A shell guard over what
+    // is in `/ms-playwright` cannot know which revision this playwright wants:
+    // the glob `chromium_headless_shell-*` accepted 1.63's `-1243` after the
+    // bump to 1.64, the install was skipped, and every browser case died with
+    // "Executable doesn't exist at .../chromium_headless_shell-1248/..." —
+    // reported as INFRA, so the browser step checked nothing. `install` is
+    // idempotent and asks the lockfile's playwright, so it runs unguarded.
+    const runner = await readFile(join(repoRoot, 'infra', 'scripts', 'in-container.sh'), 'utf8');
+    expect(runner).not.toMatch(/^\s*if\b.*\/ms-playwright\//m);
+    expect(runner).toMatch(/^\s*pnpm exec playwright install chromium\s*$/m);
+  });
 });
