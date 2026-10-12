@@ -15,7 +15,7 @@
     "@vorschicht/db": "workspace:*",
     "@vorschicht/mcp": "workspace:*",
     "@vorschicht/shared": "workspace:*",
-    "pg-boss": "^11.0.4",
+    "pg-boss": "^12.37.1",
     "pino": "^10.0.0",
     "postgres": "^3.4.9",
     "zod": "^4.1.13"
