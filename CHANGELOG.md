@@ -55,6 +55,9 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   clean-tree check no longer refuses every rollout on a host that follows the documented layout.
   `docs/OPERATIONS.md` names that path everywhere (it used to say the stack root, where none of the
   scripts look).
+- The bot identity of agent commits comes from `GIT_AUTHOR_NAME` / `GIT_AUTHOR_EMAIL` in `.env`, as
+  `.env.example` always said; nothing read them before and every commit carried the placeholder
+  address. Unset or blank, the neutral default `Vorschicht Bot <vorschicht-bot@example.com>` applies.
 
 ### Known limitations
 

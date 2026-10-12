@@ -212,6 +212,14 @@ services:
       PLAN_PROFILE: ${PLAN_PROFILE:-max_20x}
       TZ: ${TZ:-Europe/Vienna}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # A20/A36: the bot every agent commit is authored by. git reads these four
+      # ahead of any config, so the daemon's own commits, a session's commits and
+      # the merge queue's authorship check all use the same identity. Unset, the
+      # neutral default baked into the image applies.
+      GIT_AUTHOR_NAME: ${GIT_AUTHOR_NAME:-Vorschicht Bot}
+      GIT_AUTHOR_EMAIL: ${GIT_AUTHOR_EMAIL:-vorschicht-bot@example.com}
+      GIT_COMMITTER_NAME: ${GIT_AUTHOR_NAME:-Vorschicht Bot}
+      GIT_COMMITTER_EMAIL: ${GIT_AUTHOR_EMAIL:-vorschicht-bot@example.com}
     volumes:
       # The only service that may write to project working directories (§6.6).
       - ${VORSCHICHT_PROJECTS_ROOT:-./.vorschicht-data/projects}:/projects:rw

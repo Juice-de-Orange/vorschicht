@@ -11,11 +11,38 @@ import { promisify } from 'node:util';
 
 const exec = promisify(execFile);
 
-/** A20/A36: every commit this system makes is authored by the bot, never by the operator. */
-export const BOT_IDENTITY = {
+/** The neutral identity used when `.env` names none. The images bake the same one. */
+export const DEFAULT_BOT_IDENTITY = {
   name: 'Vorschicht Bot',
   email: 'vorschicht-bot@example.com',
 } as const;
+
+/**
+ * The bot's identity from `GIT_AUTHOR_NAME` / `GIT_AUTHOR_EMAIL`, each half
+ * falling back to the default on its own.
+ *
+ * Read from the environment rather than from the zod config: git itself reads
+ * the same two variables, so the commits this module makes with `-c user.*`,
+ * the commits a session makes on its own and the merge queue's authorship
+ * check (`foreignCommits`) all agree without anyone passing a value around.
+ * A blank line in `.env` is an unset variable here, as everywhere else.
+ */
+export function resolveBotIdentity(env: NodeJS.ProcessEnv = process.env): {
+  name: string;
+  email: string;
+} {
+  const name = env.GIT_AUTHOR_NAME?.trim();
+  const email = env.GIT_AUTHOR_EMAIL?.trim();
+  return {
+    name: name || DEFAULT_BOT_IDENTITY.name,
+    email: email || DEFAULT_BOT_IDENTITY.email,
+  };
+}
+
+/** A20/A36: every commit this system makes is authored by the bot, never by the operator. */
+export const BOT_IDENTITY: Readonly<{ name: string; email: string }> = Object.freeze(
+  resolveBotIdentity(),
+);
 
 /**
  * Branches a WIP commit must never touch (§7.3 step 2: "never to main, never

@@ -210,6 +210,8 @@ RUN set -eux; \
       exit 1; \
     fi
 
+# The default bot identity. `GIT_AUTHOR_*` / `GIT_COMMITTER_*` from compose
+# (`.env`) take precedence over it — git reads those ahead of any config.
 RUN git config --global user.name  "Vorschicht Bot" \
  && git config --global user.email "vorschicht-bot@example.com" \
  && git config --global init.defaultBranch main \
