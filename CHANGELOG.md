@@ -22,6 +22,14 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `operator`, instead of a hard-wired first name. Existing rows are not rewritten; an installation
   that ran an earlier build sets `VORSCHICHT_OWNER_ACTOR=max` to keep its log and its passkey user
   handle continuous.
+- The projects root no longer lands on a root-owned host directory or on `/opt`. With the base
+  compose file and `VORSCHICHT_PROJECTS_ROOT` unset it is the named volume `vorschicht_projects`
+  (owned by the orchestrator's uid 10001) instead of `infra/.vorschicht-data/projects`, which Docker
+  created as root; the production overlay falls back to `/srv/vorschicht-projects` instead of `/opt`.
+  **Upgrading:** a stack that relied on either old fallback sets `VORSCHICHT_PROJECTS_ROOT` explicitly
+  (`./.vorschicht-data/projects`, relative to `infra/`, or `/opt`) or moves the checkouts — project
+  rows store the container path `/projects/<dir>`, so they stay valid. The studio manages itself only
+  if its own checkout is `<projects root>/vorschicht`.
 - The specification's 162-item assumption diary is condensed into `docs/adr/`; `CLAUDE.md` carries an
   index (Appendix A) that the audit reads.
 - Host-specific deployment files are generic templates (`infra/docker-compose.override.example.yml`,

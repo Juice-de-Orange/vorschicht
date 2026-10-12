@@ -17,7 +17,7 @@ describe('loadConfig', () => {
     const config = loadConfig(VALID);
     expect(config.appPort).toBe(8420);
     expect(config.appBind).toBe('127.0.0.1');
-    expect(config.projectsRoot).toBe('/opt');
+    expect(config.projectsRoot).toBe('/projects');
     expect(config.planProfile).toBe('max_20x');
   });
 

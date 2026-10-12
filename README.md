@@ -112,9 +112,10 @@ installer `infra/scripts/install-host.sh`, host-specific volumes in
 passkey rescue, the watchdog, disk space — are in [`docs/OPERATIONS.md`](docs/OPERATIONS.md).
 
 `VORSCHICHT_PROJECTS_ROOT` is the host directory the orchestrator gets **read-write** at `/projects`.
-Unset, the base compose file uses `infra/.vorschicht-data/projects` inside the checkout; on a real
-host point it at a directory that holds project checkouts and nothing else — never `/opt` or a home
-directory as a whole.
+Unset, the base compose file uses the named volume `vorschicht_projects` (owned by the orchestrator's
+uid 10001; nothing is created on the host); the production overlay falls back to
+`/srv/vorschicht-projects`. On a real host point it at a directory that holds project checkouts and
+nothing else — never `/opt` or a home directory as a whole.
 
 The compose project name is fixed to `vorschicht` (`name:` in `infra/docker-compose.yml`): containers
 are `vorschicht-<service>-1`, volumes `vorschicht_*`, and the operations scripts address them by

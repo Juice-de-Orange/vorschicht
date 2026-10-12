@@ -11,9 +11,12 @@
 # what is genuinely host-specific — data lands on real paths under
 # /srv/vorschicht (override with VORSCHICHT_DATA_ROOT) so backups and restores
 # address something an operator can see, and the projects root is the host
-# directory the projects actually live in (VORSCHICHT_PROJECTS_ROOT, /opt by
-# default). The scripts under infra/scripts/ compose the stack with exactly
-# these two `-f` arguments.
+# directory the projects actually live in (VORSCHICHT_PROJECTS_ROOT,
+# /srv/vorschicht-projects by default — a directory that holds project
+# checkouts and nothing else, never /opt or a home directory as a whole). The
+# studio manages itself only if its own checkout is <projects root>/vorschicht.
+# The scripts under infra/scripts/ compose the stack with exactly these two
+# `-f` arguments.
 # =============================================================================
 services:
   db:
@@ -32,7 +35,7 @@ services:
 
   orchestrator:
     volumes:
-      - ${VORSCHICHT_PROJECTS_ROOT:-/opt}:/projects:rw
+      - ${VORSCHICHT_PROJECTS_ROOT:-/srv/vorschicht-projects}:/projects:rw
       - ${VORSCHICHT_DATA_ROOT:-/srv/vorschicht}/claude:/home/vorschicht/.claude
       - ${VORSCHICHT_DATA_ROOT:-/srv/vorschicht}/transcripts:/data/transcripts
       - ${VORSCHICHT_DATA_ROOT:-/srv/vorschicht}/docs:/data/docs

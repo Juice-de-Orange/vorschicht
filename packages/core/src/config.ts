@@ -26,11 +26,12 @@ export const DEFAULT_OWNER_ACTOR = 'operator';
 
 const configShape = z.object({
   // --- paths (A2/A33) ---
-  projectsRoot: nonEmpty.default('/opt'),
+  /** Where compose mounts the projects root inside the container. */
+  projectsRoot: nonEmpty.default('/projects'),
   dataRoot: nonEmpty.default('/srv/vorschicht'),
   /**
    * Where task worktrees live (§10). Defaults to `<dataRoot>/worktrees` — kept
-   * *outside* the projects root on purpose: a worktree under `/opt` would look
+   * *outside* the projects root on purpose: a worktree under `/projects` would look
    * like a project to onboarding, to the disk-usage report and to anyone
    * reading the host. The commits live in the project repository either way,
    * which is why this directory is disposable and not part of the backup.

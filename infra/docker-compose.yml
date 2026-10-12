@@ -227,7 +227,12 @@ services:
       GIT_COMMITTER_EMAIL: ${GIT_AUTHOR_EMAIL:-vorschicht-bot@example.com}
     volumes:
       # The only service that may write to project working directories (§6.6).
-      - ${VORSCHICHT_PROJECTS_ROOT:-./.vorschicht-data/projects}:/projects:rw
+      # Unset, a named volume (`vorschicht_projects`): it comes up owned by the
+      # orchestrator's uid 10001, where a missing bind source would be created
+      # by Docker as root — unwritable for the daemon and undeletable without
+      # sudo (#27). On a real host set VORSCHICHT_PROJECTS_ROOT to the directory
+      # that holds the project checkouts.
+      - ${VORSCHICHT_PROJECTS_ROOT:-projects}:/projects:rw
       - claude-auth:/home/vorschicht/.claude
       - transcripts:/data/transcripts
       - docs:/data/docs
@@ -284,6 +289,7 @@ services:
 
 volumes:
   postgres-data:
+  projects:
   claude-auth:
   transcripts:
   docs:

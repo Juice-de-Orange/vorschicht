@@ -118,9 +118,16 @@ section, and report what does not match.
 **Before you start**
 
 - The repository must be a git checkout **below the projects root**
-  (`VORSCHICHT_PROJECTS_ROOT` on the host, mounted at `/projects` in the
-  orchestrator). The project row stores the path the *orchestrator* sees
-  (`/projects/<directory>`), not the host path.
+  (`VORSCHICHT_PROJECTS_ROOT` on the host, `/srv/vorschicht-projects` with the
+  overlay's default; mounted at `/projects` in the orchestrator). The project
+  row stores the path the *orchestrator* sees (`/projects/<directory>`), not
+  the host path — so moving the checkouts to another host directory and
+  pointing `VORSCHICHT_PROJECTS_ROOT` there keeps every project row valid.
+- With the base compose file alone and `VORSCHICHT_PROJECTS_ROOT` unset, the
+  projects root is the named volume `vorschicht_projects`; put a checkout in
+  with `docker compose -f infra/docker-compose.yml --env-file .env exec
+  orchestrator git clone <url> /projects/<directory>` (it then belongs to uid
+  10001 already).
 - `<repo>/.git` must belong to uid **10001** — the orchestrator runs as that
   user and creates the task worktrees there. `onboard-remote.sh` refuses
   otherwise and prints the `chown`.
@@ -152,7 +159,7 @@ surprise:
 ```bash
 # 1. Dry run: one session, mounts the repository read-only, creates nothing
 infra/scripts/onboard-remote.sh --host <host> \
-  --repo /opt/example-app --slug example-app --name "Example App"
+  --repo /srv/vorschicht-projects/example-app --slug example-app --name "Example App"
 
 # 2. Read the proposal: docs/onboarding/example-app.md in the stack checkout on
 #    the host, and the card in the inbox. The document names the run id ("Lauf").
