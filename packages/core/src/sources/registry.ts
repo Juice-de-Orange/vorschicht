@@ -224,7 +224,7 @@ export class SourceRegistry {
    * This is a *record*, not an inbox item: §15's card is another block, and the
    * boundary is A48.2's — the layer that stores a proposal must not also be the
    * layer that decides it has been asked. When the producer lands it raises the
-   * card and answers it back into `accept` / `reject` with `actor = 'max'`,
+   * card and answers it back into `accept` / `reject` with the owner actor,
    * which is the whole linkage this layer needs; the shape that fits for the
    * trace is an `escalationNumber` on the proposal's payload, exactly as A83.5
    * put one on an audit finding.

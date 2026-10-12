@@ -232,6 +232,39 @@ describe('selfCheckCycle (§6.1)', () => {
     });
   });
 
+  describe('nach einer Selbstprüfung, die kein Auth-Vorfall war (#26)', () => {
+    it('meldet keine wiederhergestellte Anmeldung und merkt keine Prüfung vor', async () => {
+      // A start-up probe that failed for another reason goes through the cycle
+      // now. Its recovery is not the end of an auth incident: no "Anmeldung
+      // wieder in Ordnung", and no §8.2 session spent on an incident that was
+      // never one.
+      const h = harness([[OTHER_FAILURE], [PASS]]);
+      const requestAudit = vi.fn();
+      h.deps.requestAudit = requestAudit;
+      await selfCheckCycle(h.deps, h.state);
+      const recovered = await selfCheckCycle(h.deps, h.state);
+
+      expect(recovered.ready).toBe(true);
+      expect(recovered.auditRequested).toBe(false);
+      expect(requestAudit).not.toHaveBeenCalled();
+      const titles = h.send.mock.calls.map((call) => call[0]?.title);
+      expect(titles.at(-1)).toBe('Vorschicht: Selbstprüfung wieder bestanden');
+      expect(titles).not.toContain('Vorschicht: Anmeldung wieder in Ordnung');
+    });
+
+    it('zählt den Vorfall als Auth-Vorfall, sobald ein Durchlauf einer war', async () => {
+      const h = harness([[OTHER_FAILURE], [AUTH_FAILURE], [PASS]]);
+      const requestAudit = vi.fn();
+      h.deps.requestAudit = requestAudit;
+      await selfCheckCycle(h.deps, h.state);
+      await selfCheckCycle(h.deps, h.state);
+      await selfCheckCycle(h.deps, h.state);
+
+      expect(requestAudit).toHaveBeenCalledWith('post_auth_incident');
+      expect(h.send.mock.calls.at(-1)?.[0]?.title).toBe('Vorschicht: Anmeldung wieder in Ordnung');
+    });
+  });
+
   it('treats a non-auth failure as a self-check failure, and still parks', async () => {
     const h = harness([[OTHER_FAILURE]]);
     const outcome = await selfCheckCycle(h.deps, h.state);
@@ -354,6 +387,15 @@ describe('selfCheckCycle (§6.1)', () => {
 });
 
 describe('isAuthIncident', () => {
+  it('follows an explicit classification over the wording (#26)', () => {
+    // The start-up probe's sentence names §6.1 whatever went wrong; the probe
+    // knows whether it was authentication and says so.
+    expect(
+      isAuthIncident([{ reason: 'Startprobe (§6.1) fehlgeschlagen: CLI fehlt', auth: false }]),
+    ).toBe(false);
+    expect(isAuthIncident([{ reason: 'Sitzung abgewiesen', auth: true }])).toBe(true);
+  });
+
   it('recognises every failure `assertSubscriptionAuth` can produce', () => {
     // Taken from the real function rather than paraphrased. A reworded check
     // that stops matching would otherwise turn an auth incident into a generic

@@ -81,6 +81,7 @@ import {
   type TrustLevel,
   trustLevelCode,
 } from '@vorschicht/shared';
+import { DEFAULT_OWNER_ACTOR } from '../config.js';
 import type { EventLog } from '../event-log.js';
 import type { Queryable } from '../sql.js';
 import type { SourceAuditTrail } from './audit.js';
@@ -216,6 +217,16 @@ export interface SourceProposalsDeps {
   curate<T>(fn: (tx: ProposalTransaction) => Promise<T>): Promise<T>;
   escalations: ProposalEscalations;
   eventLog: EventLog;
+  /**
+   * Who the operator is in the logs when he acts outside a dashboard session —
+   * here: a card answer that names no one — and the
+   * WebAuthn user name. `VORSCHICHT_OWNER_ACTOR`, `operator` by default.
+   *
+   * Dashboard acts are logged as `dashboard:<credentialId>` regardless; this is
+   * the name for everything else. It is a label on append-only rows, never a
+   * key anything is looked up by, so changing it changes new rows only.
+   */
+  ownerActor?: string;
 }
 
 /** What one answered card turned into. Every value is recorded (decision 5). */
@@ -378,7 +389,7 @@ export class SourceProposals {
       });
     }
 
-    const actor = row.answeredBy ?? 'max';
+    const actor = row.answeredBy ?? this.deps.ownerActor ?? DEFAULT_OWNER_ACTOR;
     const level = choice.level;
 
     // Decision 6: the act and §19's row are one transaction, and the state is

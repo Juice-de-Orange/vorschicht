@@ -377,6 +377,44 @@ describe.skipIf(!url)('AgentRunner (§6.2, §6.3)', () => {
     expect(outcome.status).toBe('auth_incident');
   });
 
+  it('sagt dem Daemon Bescheid, wenn eine Sitzung mitten im Betrieb abgewiesen wird (#26)', async () => {
+    // A token that expires after the start-up probe passed is noticed by task
+    // sessions first. Each of them parks its own task; without this hook the
+    // daemon-level alert never fired, because `claude auth status` keeps
+    // answering `loggedIn` for any token that is set.
+    const taskId = await newTask();
+    const seen: Array<{ runId: string; taskId: string | null; problem: string }> = [];
+    const outcome = await new AgentRunner({
+      sql,
+      eventLog,
+      backend: new FakeBackend({ events: HOOK_OK, terminal: 'auth_incident' }),
+      paths,
+      onAuthIncident: (incident) => {
+        seen.push(incident);
+      },
+    }).run(request(taskId));
+
+    expect(outcome.status).toBe('auth_incident');
+    expect(seen).toEqual([
+      { runId: outcome.run.runId, taskId, problem: expect.stringMatching(/Auth-Vorfall/) },
+    ]);
+  });
+
+  it('meldet dem Daemon nichts, wenn die Sitzung aus einem anderen Grund scheitert', async () => {
+    const taskId = await newTask();
+    const seen: unknown[] = [];
+    await new AgentRunner({
+      sql,
+      eventLog,
+      backend: new FakeBackend({ events: HOOK_OK, terminal: 'crashed' }),
+      paths,
+      onAuthIncident: (incident) => {
+        seen.push(incident);
+      },
+    }).run(request(taskId));
+    expect(seen).toEqual([]);
+  });
+
   it('archiviert das Sitzungsprotokoll und verweist im Lauf darauf', async () => {
     const taskId = await newTask();
     const source = join(scratch, 'session-fixture.jsonl');

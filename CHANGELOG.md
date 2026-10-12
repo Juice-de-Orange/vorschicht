@@ -17,6 +17,19 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- The operator's own acts outside a dashboard session (manual pause, answered ntfy cards, waived
+  audit findings) and the passkey user name are logged under `VORSCHICHT_OWNER_ACTOR`, default
+  `operator`, instead of a hard-wired first name. Existing rows are not rewritten; an installation
+  that ran an earlier build sets `VORSCHICHT_OWNER_ACTOR=max` to keep its log and its passkey user
+  handle continuous.
+- The projects root no longer lands on a root-owned host directory or on `/opt`. With the base
+  compose file and `VORSCHICHT_PROJECTS_ROOT` unset it is the named volume `vorschicht_projects`
+  (owned by the orchestrator's uid 10001) instead of `infra/.vorschicht-data/projects`, which Docker
+  created as root; the production overlay falls back to `/srv/vorschicht-projects` instead of `/opt`.
+  **Upgrading:** a stack that relied on either old fallback sets `VORSCHICHT_PROJECTS_ROOT` explicitly
+  (`./.vorschicht-data/projects`, relative to `infra/`, or `/opt`) or moves the checkouts — project
+  rows store the container path `/projects/<dir>`, so they stay valid. The studio manages itself only
+  if its own checkout is `<projects root>/vorschicht`.
 - The specification's 162-item assumption diary is condensed into `docs/adr/`; `CLAUDE.md` carries an
   index (Appendix A) that the audit reads.
 - Host-specific deployment files are generic templates (`infra/docker-compose.override.example.yml`,
@@ -51,6 +64,30 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `VORSCHICHT_ACTOR`, required to apply).
 - An unknown task or run id says so instead of reporting a defect in the application; the state
   filter no longer lists "Wartet auf deine Entscheidung" twice.
+- The host overlay `infra/docker-compose.override.yml` is git-ignored, so `rollout-remote.sh`'s
+  clean-tree check no longer refuses every rollout on a host that follows the documented layout.
+  `docs/OPERATIONS.md` names that path everywhere (it used to say the stack root, where none of the
+  scripts look).
+- The bot identity of agent commits comes from `GIT_AUTHOR_NAME` / `GIT_AUTHOR_EMAIL` in `.env`, as
+  `.env.example` always said; nothing read them before and every commit carried the placeholder
+  address. Unset or blank, the neutral default `Vorschicht Bot <vorschicht-bot@example.com>` applies.
+- The daemon no longer logs "Selbstprüfung bestanden — Daemon ist bereit." while a start-up probe that
+  failed for a reason other than authentication keeps failing; such a probe is a failed self-check
+  (alert, `system.selfcheck_failed`, no work) until one passes, and its recovery is not announced as
+  a restored login.
+- A Claude token that expires or is revoked after the start-up probe passed now raises the
+  daemon-level auth incident (ntfy alert, `auth.incident`, all running work parked) as soon as a
+  session is refused, instead of only parking the task that noticed.
+- `pnpm db:generate` works: `packages/db/drizzle.config.ts` and a baseline snapshot in
+  `packages/db/migrations/meta/` make it report "No schema changes" on the current tree and draft the
+  next migration as `00NN_<name>.sql` in the existing layout (it used to fail with "drizzle.config.json
+  file does not exist", and without a baseline it would have written a `0000_*.sql` that recreates the
+  tables).
+- With the host overlay the orchestrator reads `/backups` from the same bind the backup sidecar writes
+  to; it kept the base file's named volume before, never saw `.last-result` and reported neither a
+  successful nor a failed backup.
+- `node …/node_modules/@vorschicht/db/dist/migrate.js` migrates when the path is a symlink, as pnpm
+  lays it out in the orchestrator image; it used to run nothing and exit 0.
 
 ### Known limitations
 
@@ -59,3 +96,7 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Phase 9 (supervised pilot operation) has not started; five gates are deferred to a target host.
 - The dashboard UI is German by specification; an English UI is an open issue.
+- An auth incident is announced over ntfy, in `event_log` and in the overview's strip, but it does
+  not create an inbox card.
+- Unknown `VORSCHICHT_*` variables in `.env` are not reported at start; a misspelt setting is
+  silently ignored.

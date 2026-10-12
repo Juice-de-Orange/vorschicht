@@ -1,17 +1,22 @@
 # =============================================================================
-# Production-host overlay — an example. Copy it to `docker-compose.override.yml`
-# (gitignored) and adjust the paths and limits to the host:
+# Production-host overlay — an example. Copy it to
+# `infra/docker-compose.override.yml` (gitignored, so `rollout-remote.sh`'s
+# clean-tree check still passes) and adjust the paths and limits to the host:
 #
 #   cp infra/docker-compose.override.example.yml infra/docker-compose.override.yml
-#   docker compose -f infra/docker-compose.yml -f infra/docker-compose.override.yml up -d
+#   docker compose -f infra/docker-compose.yml -f infra/docker-compose.override.yml \
+#     --env-file .env up -d
 #
 # A base file plus a host-specific overlay (A33). What changes here is only
 # what is genuinely host-specific — data lands on real paths under
 # /srv/vorschicht (override with VORSCHICHT_DATA_ROOT) so backups and restores
 # address something an operator can see, and the projects root is the host
-# directory the projects actually live in (VORSCHICHT_PROJECTS_ROOT, /opt by
-# default). The scripts under infra/scripts/ compose the stack with exactly
-# these two `-f` arguments.
+# directory the projects actually live in (VORSCHICHT_PROJECTS_ROOT,
+# /srv/vorschicht-projects by default — a directory that holds project
+# checkouts and nothing else, never /opt or a home directory as a whole). The
+# studio manages itself only if its own checkout is <projects root>/vorschicht.
+# The scripts under infra/scripts/ compose the stack with exactly these two
+# `-f` arguments.
 # =============================================================================
 services:
   db:
@@ -30,11 +35,16 @@ services:
 
   orchestrator:
     volumes:
-      - ${VORSCHICHT_PROJECTS_ROOT:-/opt}:/projects:rw
+      - ${VORSCHICHT_PROJECTS_ROOT:-/srv/vorschicht-projects}:/projects:rw
       - ${VORSCHICHT_DATA_ROOT:-/srv/vorschicht}/claude:/home/vorschicht/.claude
       - ${VORSCHICHT_DATA_ROOT:-/srv/vorschicht}/transcripts:/data/transcripts
       - ${VORSCHICHT_DATA_ROOT:-/srv/vorschicht}/docs:/data/docs
       - ${VORSCHICHT_DATA_ROOT:-/srv/vorschicht}/worktrees:/data/worktrees
+      # The backup sidecar's `.last-result`, read-only as in the base file.
+      # Left out, the base file's named volume would win here while the
+      # sidecar writes to the bind below — the daemon would never see a
+      # backup result, neither success nor failure.
+      - ${VORSCHICHT_DATA_ROOT:-/srv/vorschicht}/backups:/backups:ro
     # Example limits for a shared host that carries other stacks; leave them
     # room and size these to the machine.
     deploy:

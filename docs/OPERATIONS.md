@@ -42,22 +42,26 @@ in the examples below; adjust to your checkout). The two Compose files
 **always** belong together — the override carries the bind mounts under the
 data root (`/srv/vorschicht` by default), and without it the stack starts with
 empty volumes. Copy `infra/docker-compose.override.example.yml` to
-`docker-compose.override.yml` once and keep it next to the base file.
+`infra/docker-compose.override.yml` once and keep it next to the base file —
+that is the path `watchdog.sh`, `rollout-remote.sh` and the build report
+compose with, and the one `.gitignore` covers, so the rollout's clean-tree
+check does not trip over it.
 
 ```bash
 ssh <host>
 cd /opt/vorschicht
-alias vc='docker compose -f infra/docker-compose.yml -f docker-compose.override.yml --env-file .env'
+alias vc='docker compose -f infra/docker-compose.yml -f infra/docker-compose.override.yml --env-file .env'
 
-vc ps                 # state of all four services
+vc ps                 # state of all five services
 vc up -d              # start (idempotent)
 vc stop               # halt, data stays
 vc restart orchestrator
 vc logs -f --tail 100 orchestrator
 ```
 
-**What "healthy" means:** `db`, `app`, `orchestrator` and `backup` report
-`running (healthy)`. All four carry a healthcheck. A service showing `running`
+**What "healthy" means:** `db`, `db-test` (the throwaway database the `test`
+gate runs against), `app`, `orchestrator` and `backup` report
+`running (healthy)`. All five carry a healthcheck. A service showing `running`
 without `(healthy)` is still starting — the orchestrator runs its self-check
 (§6.1) at start-up and needs one model session for it.
 
@@ -72,7 +76,7 @@ at the `auth.incident` rows in `event_log`.
 **Never `vc down`,** unless you really want the networks torn down. `stop` is
 enough for everything, and `down -v` would take the volumes with it.
 
-**The stack comes back by itself after a host reboot:** all four services carry
+**The stack comes back by itself after a host reboot:** all five services carry
 `restart: unless-stopped`. The watchdog timer additionally fires two minutes
 after boot (`OnBootSec=2min`).
 
@@ -115,9 +119,16 @@ section, and report what does not match.
 **Before you start**
 
 - The repository must be a git checkout **below the projects root**
-  (`VORSCHICHT_PROJECTS_ROOT` on the host, mounted at `/projects` in the
-  orchestrator). The project row stores the path the *orchestrator* sees
-  (`/projects/<directory>`), not the host path.
+  (`VORSCHICHT_PROJECTS_ROOT` on the host, `/srv/vorschicht-projects` with the
+  overlay's default; mounted at `/projects` in the orchestrator). The project
+  row stores the path the *orchestrator* sees (`/projects/<directory>`), not
+  the host path — so moving the checkouts to another host directory and
+  pointing `VORSCHICHT_PROJECTS_ROOT` there keeps every project row valid.
+- With the base compose file alone and `VORSCHICHT_PROJECTS_ROOT` unset, the
+  projects root is the named volume `vorschicht_projects`; put a checkout in
+  with `docker compose -f infra/docker-compose.yml --env-file .env exec
+  orchestrator git clone <url> /projects/<directory>` (it then belongs to uid
+  10001 already).
 - `<repo>/.git` must belong to uid **10001** — the orchestrator runs as that
   user and creates the task worktrees there. `onboard-remote.sh` refuses
   otherwise and prints the `chown`.
@@ -149,7 +160,7 @@ surprise:
 ```bash
 # 1. Dry run: one session, mounts the repository read-only, creates nothing
 infra/scripts/onboard-remote.sh --host <host> \
-  --repo /opt/example-app --slug example-app --name "Example App"
+  --repo /srv/vorschicht-projects/example-app --slug example-app --name "Example App"
 
 # 2. Read the proposal: docs/onboarding/example-app.md in the stack checkout on
 #    the host, and the card in the inbox. The document names the run id ("Lauf").
@@ -227,7 +238,7 @@ and `--backups <dir>` another directory.
 
 **Where the backups are** depends on how the stack was started:
 
-- **With the host overlay** (`docker-compose.override.yml`):
+- **With the host overlay** (`infra/docker-compose.override.yml`):
   `/srv/vorschicht/backups/daily` (14 kept) and `.../weekly` (8) — the probe's
   default.
 - **With the base compose file alone** (the README quick start): in the named
@@ -245,6 +256,14 @@ and `--backups <dir>` another directory.
 Every night at 02:30, three files with the same timestamp appear:
 `db-<stamp>.dump`, `docs-<stamp>.tar.gz`, `transcripts-<stamp>.tar.gz`.
 `vc exec backup ls /backups/daily` lists them in either layout.
+
+**A backup now** — before an update, before a restore drill, or to see the path
+work — runs the same script the schedule runs, in the running sidecar:
+
+```bash
+vc exec backup /usr/local/bin/backup-run.sh
+vc exec backup cat /backups/.last-result   # outcome=ok, one line per component
+```
 
 **The real restore**, should it ever be needed — order matters. `vc` is the
 alias from the first section; with the base compose file alone it is
@@ -304,6 +323,13 @@ is. The database then has no row for it, which is harmless for the vault and
 the trace views — delete the directories' contents first if you want the exact
 state of the backup.
 
+**After the restore** the orchestrator starts on the restored database as on
+any other: its migration check finds the dump's `_vorschicht_migrations` rows
+and logs `Schema ist aktuell`. This sequence — data created, backup now, files
+and database wiped, the steps above, `vc up -d`, then a full `vc stop` /
+`vc up -d` — was run on the base compose file (2026-10-12): every row and file
+came back and survived the restart.
+
 **What explicitly does not happen:** the migrations are **not** run again. The
 dump carries its schema and its `_vorschicht_migrations` rows with it; a
 `migrate()` on top would be a no-op at best. If the number of migrations in the
@@ -356,6 +382,19 @@ zugestellt` and the event row carries `announced: false` with the error — the
 overview's "Auth-Vorfall" strip repeats it.
 `Selbstprüfung bestanden — Daemon ist bereit.` does not appear until a session
 has authenticated.
+
+**A token that dies while the studio runs** (expired or revoked after the
+start-up probe passed) is noticed by the next task session, which parks its own
+task. That refusal also closes the start-up gate again: the log says `Sitzung
+bei der Anmeldung abgewiesen — Auth-Vorfall`, the next self-check pass is the
+same auth incident as above (alert, `auth.incident`, all running work parked),
+and a fresh probe five minutes later decides whether it is over.
+
+**A start-up probe that fails for another reason** (the CLI does not start, the
+run directory is not writable, …) is a failed self-check as well: `Selbstprüfung
+rot` in the log, `system.selfcheck_failed` in `event_log`, "Selbstprüfung
+fehlgeschlagen" on `vorschicht-alerts`, a new probe every five minutes — and no
+"bereit" line until one passes.
 
 The token lives **only** in the auth volume and in the `.env` on this host
 (A5). Carrying it elsewhere for a run is not a path this project knows — which
@@ -537,7 +576,7 @@ docker compose -f infra/docker-compose.yml --env-file .env up -d orchestrator
 ```
 
 On a host with the override file, add it:
-`-f infra/docker-compose.yml -f docker-compose.override.yml`.
+`-f infra/docker-compose.yml -f infra/docker-compose.override.yml`.
 
 **Check:**
 

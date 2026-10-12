@@ -2,7 +2,7 @@
 # Vorschicht stack (§3).
 #
 # Base file — runs standalone on any machine with Docker. The production host
-# adds `docker-compose.override.yml` on top (copied and adapted from
+# adds `infra/docker-compose.override.yml` on top (copied and adapted from
 # `docker-compose.override.example.yml`): a base file plus a host-specific
 # overlay (A33).
 #
@@ -120,6 +120,8 @@ services:
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN}
       WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID}
       WEBAUTHN_RP_NAME: ${WEBAUTHN_RP_NAME:-Vorschicht}
+      # The WebAuthn user name. Both services read it; see .env.example.
+      VORSCHICHT_OWNER_ACTOR: ${VORSCHICHT_OWNER_ACTOR:-}
       SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET fehlt}
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
       CLAUDE_CLI_VERSION: ${CLAUDE_CLI_VERSION:-2.1.220}
@@ -144,7 +146,7 @@ services:
       #
       # The same volume the orchestrator mounts (docs.search, §6.6's leak scan)
       # and the backup sidecar tars (§18, A14). All three have to be the *same*
-      # filesystem, which is why `docker-compose.override.yml` carries an `app`
+      # filesystem, which is why `infra/docker-compose.override.yml` carries an `app`
       # section too: that overlay replaces this named volume with a host bind,
       # and a service mounting only one of the two would store uploads where the
       # vault's readers and the backup cannot see them.
@@ -212,9 +214,25 @@ services:
       PLAN_PROFILE: ${PLAN_PROFILE:-max_20x}
       TZ: ${TZ:-Europe/Vienna}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Who the operator is in the logs outside a dashboard session (manual
+      # pause, ntfy card answers). Blank means the default, `operator`.
+      VORSCHICHT_OWNER_ACTOR: ${VORSCHICHT_OWNER_ACTOR:-}
+      # A20/A36: the bot every agent commit is authored by. git reads these four
+      # ahead of any config, so the daemon's own commits, a session's commits and
+      # the merge queue's authorship check all use the same identity. Unset, the
+      # neutral default baked into the image applies.
+      GIT_AUTHOR_NAME: ${GIT_AUTHOR_NAME:-Vorschicht Bot}
+      GIT_AUTHOR_EMAIL: ${GIT_AUTHOR_EMAIL:-vorschicht-bot@example.com}
+      GIT_COMMITTER_NAME: ${GIT_AUTHOR_NAME:-Vorschicht Bot}
+      GIT_COMMITTER_EMAIL: ${GIT_AUTHOR_EMAIL:-vorschicht-bot@example.com}
     volumes:
       # The only service that may write to project working directories (§6.6).
-      - ${VORSCHICHT_PROJECTS_ROOT:-./.vorschicht-data/projects}:/projects:rw
+      # Unset, a named volume (`vorschicht_projects`): it comes up owned by the
+      # orchestrator's uid 10001, where a missing bind source would be created
+      # by Docker as root — unwritable for the daemon and undeletable without
+      # sudo (#27). On a real host set VORSCHICHT_PROJECTS_ROOT to the directory
+      # that holds the project checkouts.
+      - ${VORSCHICHT_PROJECTS_ROOT:-projects}:/projects:rw
       - claude-auth:/home/vorschicht/.claude
       - transcripts:/data/transcripts
       - docs:/data/docs
@@ -271,6 +289,7 @@ services:
 
 volumes:
   postgres-data:
+  projects:
   claude-auth:
   transcripts:
   docs:

@@ -14,7 +14,7 @@ import type postgres from 'postgres';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { StoppableRun } from './active-runs.js';
 import { EventLog } from './event-log.js';
-import { GuardianService } from './guardian-service.js';
+import { type GuardianDeps, GuardianService } from './guardian-service.js';
 import { UsageMeter } from './usage-meter.js';
 
 const url = process.env.TEST_DATABASE_URL;
@@ -94,7 +94,7 @@ describe.skipIf(!url)('GuardianService', () => {
     runs = [];
   });
 
-  function makeService(graceMs = 20) {
+  function makeService(graceMs = 20, extra: Partial<GuardianDeps> = {}) {
     const meter = new UsageMeter({ sql, now: () => clock });
     return {
       meter,
@@ -118,6 +118,7 @@ describe.skipIf(!url)('GuardianService', () => {
         activeRuns: () => runs.map((r) => r.run),
         now: () => clock,
         graceMs,
+        ...extra,
       }),
     };
   }
@@ -290,6 +291,33 @@ describe.skipIf(!url)('GuardianService', () => {
       const decision = await service.setPause({ active: true, hard: false });
       expect(decision.state).toBe('wrap_up');
       expect(queueState.paused).toBe(true);
+    });
+
+    it('schreibt die Pause dem Betreiber zu, wie VORSCHICHT_OWNER_ACTOR ihn nennt', async () => {
+      const { meter, service } = makeService(20, { ownerActor: 'erika' });
+      await meter.ingestOfficial(usage({ fiveHour: 1 }));
+      await service.setPause({ active: true, hard: false });
+
+      const [row] = await sql<Array<{ actor: string }>>`
+        SELECT actor FROM guardian_events ORDER BY id DESC LIMIT 1
+      `;
+      expect(row?.actor).toBe('erika');
+      const [event] = await sql<Array<{ actor: string }>>`
+        SELECT actor FROM event_log WHERE kind = 'guardian.state_changed'
+        ORDER BY id DESC LIMIT 1
+      `;
+      expect(event?.actor).toBe('erika');
+    });
+
+    it('nennt ohne Einstellung den neutralen Betreiber, keinen Personennamen', async () => {
+      const { meter, service } = makeService();
+      await meter.ingestOfficial(usage({ fiveHour: 1 }));
+      await service.setPause({ active: true, hard: false });
+
+      const [row] = await sql<Array<{ actor: string }>>`
+        SELECT actor FROM guardian_events ORDER BY id DESC LIMIT 1
+      `;
+      expect(row?.actor).toBe('operator');
     });
 
     it('bildet die harte Pause auf Hard-Stop-Semantik ab und kehrt zurück', async () => {

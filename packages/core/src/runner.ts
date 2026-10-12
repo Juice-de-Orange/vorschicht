@@ -219,6 +219,15 @@ export interface AgentRunnerDeps {
   now?: () => number;
   /** Live feed for the office view (§17.2). Never allowed to break a run. */
   onEvent?: (event: BackendEvent) => void;
+  /**
+   * A session the vendor refused to authenticate (§6.1), whatever it served.
+   *
+   * The task it belonged to parks itself; this is how the daemon hears of it.
+   * Without it a token that died after the start-up probe passed raised no
+   * daemon-level alert at all, because `claude auth status` keeps answering
+   * `loggedIn` for any token that is set (#26). Never allowed to break a run.
+   */
+  onAuthIncident?: (incident: { runId: string; taskId: string | null; problem: string }) => void;
   onWarning?: (message: string) => void;
 }
 
@@ -891,6 +900,14 @@ export class AgentRunner {
         transcriptPath: leg.transcriptPath,
       },
     });
+
+    if (verdict.status === 'auth_incident') {
+      try {
+        this.deps.onAuthIncident?.({ runId, taskId, problem: verdict.problem });
+      } catch (error) {
+        this.warn(`Auth-Vorfall konnte nicht gemeldet werden: ${(error as Error).message}`);
+      }
+    }
 
     if (verdict.status === 'ok' && parsed) return { status: 'ok', run: summary, result: parsed };
     if (verdict.status === 'ok') {

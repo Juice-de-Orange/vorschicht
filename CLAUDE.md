@@ -67,8 +67,9 @@ Principles, in priority order:
 - **Push notifications:** a self-hosted (or hosted) ntfy server, token-protected topics.
 - **Project folders** live on the host filesystem and are bind-mounted into the orchestrator
   container; they stay the single source of truth for development.
-- **Git identity:** all agent commits are authored as `Vorschicht Bot <vorschicht-bot@example.com>`
-  (configured in `.env`), never as a person. Bot tokens live in the same secret regime as the Claude
+- **Git identity:** all agent commits are authored by the bot — `GIT_AUTHOR_NAME` /
+  `GIT_AUTHOR_EMAIL` in `.env`, default `Vorschicht Bot <vorschicht-bot@example.com>` — never by a
+  person. Bot tokens live in the same secret regime as the Claude
   auth token (A20).
 - **Claude usage:** the operator's personal Claude subscription only. **Hard rule (v1): no API key,
   no usage credits, ever.** Claude Code is the only model access path; the `api-key` contingency

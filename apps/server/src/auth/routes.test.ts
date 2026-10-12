@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EXCLUDE_CREDENTIALS_MAX, neuesteZuerst } from './routes.js';
+import { EXCLUDE_CREDENTIALS_MAX, neuesteZuerst, webauthnUser } from './routes.js';
 
 /**
  * §19s Registrierung: der Deckel auf `excludeCredentials`.
@@ -50,5 +50,21 @@ describe('excludeCredentials wird gedeckelt', () => {
     expect(gesendet).toHaveLength(EXCLUDE_CREDENTIALS_MAX);
     // Und es sind die jüngsten: `c99` ist der neueste Eintrag.
     expect(gesendet[0]?.id).toBe('c99');
+  });
+});
+
+describe('WebAuthn-Benutzer folgt VORSCHICHT_OWNER_ACTOR', () => {
+  it('heißt ohne Einstellung neutral, nicht nach einer Person', () => {
+    const user = webauthnUser('operator');
+    expect(user.userName).toBe('operator');
+    expect(new TextDecoder().decode(user.userID)).toBe('vorschicht-operator');
+  });
+
+  it('behält für einen gesetzten Namen den Griff, den bestehende Passkeys tragen', () => {
+    // Eine Installation, die vorher unter dem fest verdrahteten Namen lief,
+    // setzt ihn als VORSCHICHT_OWNER_ACTOR und bekommt denselben user handle.
+    const user = webauthnUser('erika');
+    expect(user.userName).toBe('erika');
+    expect(new TextDecoder().decode(user.userID)).toBe('vorschicht-erika');
   });
 });

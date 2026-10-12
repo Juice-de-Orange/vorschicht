@@ -21,7 +21,12 @@ export interface AuthStatus {
   subscriptionType?: string | null;
 }
 
-export type CheckResult = { ok: true } | { ok: false; reason: string };
+/**
+ * One check's verdict. `auth` is set by a check that knows whether its failure
+ * was authentication (the start-up probe does); without it `isAuthIncident`
+ * classifies by the wording, which is what every check here relies on.
+ */
+export type CheckResult = { ok: true } | { ok: false; reason: string; auth?: boolean };
 
 /** Auth methods that mean "subscription", i.e. no money can be spent. */
 const SUBSCRIPTION_AUTH_METHODS = new Set(['oauth_token', 'claude.ai', 'oauth']);

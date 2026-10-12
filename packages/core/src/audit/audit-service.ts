@@ -60,6 +60,7 @@ import {
   type RunCaps,
 } from '@vorschicht/shared';
 import type postgres from 'postgres';
+import { DEFAULT_OWNER_ACTOR } from '../config.js';
 import type { EscalationService } from '../escalation-service.js';
 import type { EventLog } from '../event-log.js';
 import { AGENT_PROFILES } from '../profiles/index.js';
@@ -204,6 +205,16 @@ export interface AuditServiceDeps {
   now?: () => Date;
   /** Injected so a sample is reproducible in a test (§8.2: recorded). */
   rng?: (seed: string) => () => number;
+  /**
+   * Who the operator is in the logs when he acts outside a dashboard session —
+   * here: a waived finding — and the
+   * WebAuthn user name. `VORSCHICHT_OWNER_ACTOR`, `operator` by default.
+   *
+   * Dashboard acts are logged as `dashboard:<credentialId>` regardless; this is
+   * the name for everything else. It is a label on append-only rows, never a
+   * key anything is looked up by, so changing it changes new rows only.
+   */
+  ownerActor?: string;
   onWarning?(message: string): void;
   /** Tighten the session's caps below the profile's (A32). Never widens. */
   capsCeiling?: Partial<RunCaps>;
@@ -1140,7 +1151,9 @@ export class AuditService {
 
   /** The operator decided it stands as it is (§22's "or explicitly waived by the operator"). */
   async waive(findingId: string, reason: string): Promise<void> {
-    await this.appendFinding(findingId, 'waived', 'max', { reason });
+    await this.appendFinding(findingId, 'waived', this.deps.ownerActor ?? DEFAULT_OWNER_ACTOR, {
+      reason,
+    });
   }
 
   // --- reads ----------------------------------------------------------------

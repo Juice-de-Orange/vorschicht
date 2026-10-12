@@ -351,6 +351,7 @@ async function main(): Promise<void> {
       rpName: config.webauthnRpName,
       origin: config.publicOrigin,
       secureCookies,
+      ownerActor: config.ownerActor,
     }),
   });
 

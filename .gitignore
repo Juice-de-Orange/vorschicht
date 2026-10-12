@@ -23,6 +23,10 @@ secrets*
 # --- runtime & local state ---
 .build-logs/
 .vorschicht-data/
+# The host overlay (copied from docker-compose.override.example.yml) is
+# host-specific and never committed. Ignored so that `rollout-remote.sh`'s
+# clean-tree check passes on a host that has one.
+infra/docker-compose.override.yml
 coverage/
 playwright-report/
 test-results/

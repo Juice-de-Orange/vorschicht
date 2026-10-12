@@ -182,6 +182,11 @@ RUN groupadd --gid 10001 vorschicht \
 RUN mkdir -p /data/runs /data/transcripts /data/docs /data/worktrees \
  && chown -R 10001:10001 /data
 
+# The same for the projects mount point: the base compose file mounts a fresh
+# named volume here when VORSCHICHT_PROJECTS_ROOT is unset, and it inherits
+# this ownership (#27). A host bind keeps the host directory's owner.
+RUN mkdir -p /projects && chown 10001:10001 /projects
+
 # The per-role `--settings` files (§6.2) carrying the §6.6 containment hooks.
 # Created here, as root, because `WORKDIR /app` above made /app root-owned and
 # the daemon runs as 10001: it writes these files at start-up and refuses to
@@ -210,6 +215,8 @@ RUN set -eux; \
       exit 1; \
     fi
 
+# The default bot identity. `GIT_AUTHOR_*` / `GIT_COMMITTER_*` from compose
+# (`.env`) take precedence over it — git reads those ahead of any config.
 RUN git config --global user.name  "Vorschicht Bot" \
  && git config --global user.email "vorschicht-bot@example.com" \
  && git config --global init.defaultBranch main \

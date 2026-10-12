@@ -353,7 +353,7 @@ export const ANSWER_WITHOUT_DECISION_MESSAGE =
 export const answerEscalationInput = z
   .object({
     ...answerFields,
-    /** Who decided. `max`, or `dashboard:<credentialId>` from an authenticated session. */
+    /** Who decided: the owner actor, or `dashboard:<credentialId>` from an authenticated session. */
     actor: z.string().min(1),
   })
   .refine(hasAnswerDecision, {

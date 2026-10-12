@@ -50,6 +50,14 @@ export interface CycleOutcome {
 export interface CycleState {
   /** Set once work has been parked for an incident; cleared when it is over. */
   authIncidentParked: boolean;
+  /**
+   * Whether the incident behind the parked work was an auth incident on any of
+   * its passes. Only that kind ends with "Anmeldung wieder in Ordnung" and
+   * §8.2's `post_auth_incident` audit; a start-up probe that failed for another
+   * reason (#26) is a failed self-check and ends as one. Unset reads as an auth
+   * incident, which is what every parked state meant before the field existed.
+   */
+  incidentWasAuth?: boolean;
 }
 
 /**
@@ -136,8 +144,15 @@ export interface CycleDeps {
  * broke", and it is decided by a regular expression over a German sentence —
  * which is exactly the kind of thing that silently stops matching.
  */
-export function isAuthIncident(failures: ReadonlyArray<{ reason: string }>): boolean {
-  return failures.some((failure) => /§6\.1|angemeldet|auth status|§2/.test(failure.reason));
+export function isAuthIncident(
+  failures: ReadonlyArray<{ reason: string; auth?: boolean }>,
+): boolean {
+  // A check that knows says so (`auth`): the start-up probe's sentence names
+  // §6.1 whatever went wrong, so the wording alone would call every failed
+  // probe an auth incident.
+  return failures.some(
+    (failure) => failure.auth ?? /§6\.1|angemeldet|auth status|§2/.test(failure.reason),
+  );
 }
 
 export async function selfCheckCycle(deps: CycleDeps, state: CycleState): Promise<CycleOutcome> {
@@ -152,13 +167,22 @@ export async function selfCheckCycle(deps: CycleDeps, state: CycleState): Promis
       // order (§7.2) — the same path a window reset takes, because from the
       // task's point of view the two are the same event: it was stopped for a
       // reason that has since gone away.
+      const wasAuth = state.incidentWasAuth !== false;
       const back = await deps.wrapUp.resumeAll();
       resumed = back.length;
       state.authIncidentParked = false;
-      deps.logger.info({ resumed }, 'Auth-Vorfall behoben — Arbeit fortgesetzt');
+      state.incidentWasAuth = false;
+      deps.logger.info(
+        { resumed },
+        wasAuth
+          ? 'Auth-Vorfall behoben — Arbeit fortgesetzt'
+          : 'Selbstprüfung wieder grün — Arbeit fortgesetzt',
+      );
       const sent = await deps.notifier.send({
         topic: 'info',
-        title: 'Vorschicht: Anmeldung wieder in Ordnung',
+        title: wasAuth
+          ? 'Vorschicht: Anmeldung wieder in Ordnung'
+          : 'Vorschicht: Selbstprüfung wieder bestanden',
         message: `${resumed} geparkte Aufgabe(n) werden fortgesetzt.`,
       });
       if (!sent.ok) {
@@ -169,8 +193,9 @@ export async function selfCheckCycle(deps: CycleDeps, state: CycleState): Promis
       // Inside the `authIncidentParked` branch and not beside it: every healthy
       // pass reaches this function, and requesting on all of them would ask for
       // an audit every fifteen seconds forever. Guarded, because a scheduler
-      // that threw here would undo the resume that just happened.
-      if (deps.requestAudit) {
+      // that threw here would undo the resume that just happened. Only after an
+      // auth incident: that is the trigger's name and the only case it covers.
+      if (wasAuth && deps.requestAudit) {
         try {
           deps.requestAudit('post_auth_incident');
           auditRequested = true;
@@ -199,6 +224,10 @@ export async function selfCheckCycle(deps: CycleDeps, state: CycleState): Promis
   // §6.1: an authentication failure is an **auth incident**, never a task
   // failure. Nothing is marked red; the daemon idles and says so.
   const authIncident = isAuthIncident(failures);
+  // Sticky for the length of one incident: a pass that was an auth incident
+  // makes the whole incident one, whatever the passes around it said.
+  state.incidentWasAuth =
+    authIncident || (state.authIncidentParked && state.incidentWasAuth !== false);
 
   // The alert goes out **before** the event is written, so the event can say
   // whether it arrived. A push that failed used to be discarded here: with an

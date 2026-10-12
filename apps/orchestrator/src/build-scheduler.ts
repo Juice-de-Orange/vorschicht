@@ -198,6 +198,8 @@ export interface SchedulerAssembly {
   sparbetrieb?: () => Promise<boolean>;
   /** Where this repository is mounted, as the container sees it. */
   selfRootPath: string;
+  /** `VORSCHICHT_OWNER_ACTOR`, for the audit's waived findings. */
+  ownerActor?: string;
   /** A7: parallel agent sessions, by plan profile. */
   concurrency: number;
   runner: AgentRunner;
@@ -294,6 +296,7 @@ export async function buildScheduler(deps: SchedulerAssembly): Promise<BuiltSche
           // §8.2: the P1 inbox item, every time.
           escalations: deps.escalations,
           projectId: selfProject.id,
+          ...(deps.ownerActor ? { ownerActor: deps.ownerActor } : {}),
           onWarning: deps.onWarning,
         })
       : null;
