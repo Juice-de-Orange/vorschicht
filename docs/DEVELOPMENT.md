@@ -103,6 +103,12 @@ its German error sentence, and the image shows it.
   you the gitleaks hook; CI runs the same scanner over the full history.
 - The append-only tables stay append-only and every migration grants to `vorschicht_app`
   (`gate-migrations.mjs`).
+- Migrations are hand-written SQL in `packages/db/migrations/` (the runner checks a checksum per
+  applied file, so never edit one that has shipped). `src/schema.ts` mirrors part of them for typed
+  queries. After changing the mirror, `pnpm db:generate --name <what>` drafts the next numbered file
+  (`00NN_<what>.sql`, plain SQL) and a snapshot in `migrations/meta/` — review the draft, add what
+  a generator cannot know (grants, guards), commit both. On an unchanged tree it reports "No schema
+  changes"; `packages/db/src/drizzle-baseline.test.ts` keeps it that way.
 - Base images are pinned by digest, gitleaks and the Claude CLI by version and checksum
   (`gate-image-pins.test.ts`, `gitleaks-pin.test.ts`); the four places must agree.
 

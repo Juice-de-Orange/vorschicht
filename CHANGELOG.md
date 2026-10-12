@@ -78,6 +78,11 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A Claude token that expires or is revoked after the start-up probe passed now raises the
   daemon-level auth incident (ntfy alert, `auth.incident`, all running work parked) as soon as a
   session is refused, instead of only parking the task that noticed.
+- `pnpm db:generate` works: `packages/db/drizzle.config.ts` and a baseline snapshot in
+  `packages/db/migrations/meta/` make it report "No schema changes" on the current tree and draft the
+  next migration as `00NN_<name>.sql` in the existing layout (it used to fail with "drizzle.config.json
+  file does not exist", and without a baseline it would have written a `0000_*.sql` that recreates the
+  tables).
 
 ### Known limitations
 
