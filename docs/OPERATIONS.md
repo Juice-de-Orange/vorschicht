@@ -52,15 +52,16 @@ ssh <host>
 cd /opt/vorschicht
 alias vc='docker compose -f infra/docker-compose.yml -f infra/docker-compose.override.yml --env-file .env'
 
-vc ps                 # state of all four services
+vc ps                 # state of all five services
 vc up -d              # start (idempotent)
 vc stop               # halt, data stays
 vc restart orchestrator
 vc logs -f --tail 100 orchestrator
 ```
 
-**What "healthy" means:** `db`, `app`, `orchestrator` and `backup` report
-`running (healthy)`. All four carry a healthcheck. A service showing `running`
+**What "healthy" means:** `db`, `db-test` (the throwaway database the `test`
+gate runs against), `app`, `orchestrator` and `backup` report
+`running (healthy)`. All five carry a healthcheck. A service showing `running`
 without `(healthy)` is still starting — the orchestrator runs its self-check
 (§6.1) at start-up and needs one model session for it.
 
@@ -75,7 +76,7 @@ at the `auth.incident` rows in `event_log`.
 **Never `vc down`,** unless you really want the networks torn down. `stop` is
 enough for everything, and `down -v` would take the volumes with it.
 
-**The stack comes back by itself after a host reboot:** all four services carry
+**The stack comes back by itself after a host reboot:** all five services carry
 `restart: unless-stopped`. The watchdog timer additionally fires two minutes
 after boot (`OnBootSec=2min`).
 
