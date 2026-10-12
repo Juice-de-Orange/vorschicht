@@ -40,6 +40,11 @@ services:
       - ${VORSCHICHT_DATA_ROOT:-/srv/vorschicht}/transcripts:/data/transcripts
       - ${VORSCHICHT_DATA_ROOT:-/srv/vorschicht}/docs:/data/docs
       - ${VORSCHICHT_DATA_ROOT:-/srv/vorschicht}/worktrees:/data/worktrees
+      # The backup sidecar's `.last-result`, read-only as in the base file.
+      # Left out, the base file's named volume would win here while the
+      # sidecar writes to the bind below — the daemon would never see a
+      # backup result, neither success nor failure.
+      - ${VORSCHICHT_DATA_ROOT:-/srv/vorschicht}/backups:/backups:ro
     # Example limits for a shared host that carries other stacks; leave them
     # room and size these to the machine.
     deploy:

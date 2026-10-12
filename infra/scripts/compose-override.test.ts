@@ -64,3 +64,62 @@ describe('Host-Overlay infra/docker-compose.override.yml', () => {
     expect(strays).toEqual([]);
   });
 });
+
+/** `<service> → [<source>, <container path>]` for every service's `volumes:` list. */
+function serviceVolumes(compose: string): Map<string, [string, string][]> {
+  const services = compose.split(/^services:\s*$/m)[1]?.split(/^\S/m)[0] ?? '';
+  const result = new Map<string, [string, string][]>();
+  for (const block of services.split(/^(?= {2}[a-z][\w-]*:\s*$)/m)) {
+    const name = /^ {2}([a-z][\w-]*):/.exec(block)?.[1];
+    const list = block.split(/^ {4}volumes:\s*$/m)[1]?.split(/^ {4}\S/m)[0] ?? '';
+    if (!name) continue;
+    const mounts = [...list.matchAll(/^ {6}- (\S+)\s*$/gm)].map((match) => {
+      // `source:target[:mode]` — the source may carry a `${VAR:-default}`.
+      const [, source, target] = /^(\$\{[^}]+\}[^:]*|[^:]+):([^:]+)/.exec(match[1] as string) ?? [];
+      return [source as string, target as string] as [string, string];
+    });
+    result.set(name, mounts);
+  }
+  return result;
+}
+
+describe('Host-Overlay und Basis-Datei hängen geteilte Daten gleich ein', () => {
+  /**
+   * Compose merges `volumes:` per container path. A named volume of the base
+   * file that two services share — the backup sidecar *writes* `/backups`,
+   * the orchestrator *reads* `.last-result` from it — has to be re-pointed
+   * for both in the overlay, or the one left out keeps the named volume and
+   * the two sit on different filesystems. For `/backups` that meant the
+   * daemon never saw a backup result, neither success nor failure, and took
+   * the stack for a fresh one.
+   */
+  it('gibt allen Diensten eines geteilten Volumes denselben Host-Pfad', async () => {
+    const base = serviceVolumes(await readFile(join(repoRoot, 'infra/docker-compose.yml'), 'utf8'));
+    const overlay = serviceVolumes(
+      await readFile(join(repoRoot, 'infra/docker-compose.override.example.yml'), 'utf8'),
+    );
+
+    // Named volume → each base-file user and what the overlay mounts there.
+    const users = new Map<string, string[]>();
+    for (const [service, mounts] of base) {
+      for (const [volume, target] of mounts) {
+        if (!/^[a-z][\w-]*$/.test(volume)) continue;
+        const own = overlay.get(service)?.find(([, t]) => t === target)?.[0];
+        users.set(volume, [
+          ...(users.get(volume) ?? []),
+          `${service} ${target} → ${own ?? volume}`,
+        ]);
+      }
+    }
+
+    // The parser found the case this test is about, so a green run means something.
+    expect(users.get('backups')).toHaveLength(2);
+
+    const mismatches: string[] = [];
+    for (const [volume, mounts] of users) {
+      const sources = new Set(mounts.map((mount) => mount.split(' → ')[1]));
+      if (sources.size > 1) mismatches.push(`${volume}: ${mounts.join(', ')}`);
+    }
+    expect(mismatches).toEqual([]);
+  });
+});
