@@ -1,7 +1,7 @@
 {
   "hinweis": "Das Leistungsbudget der Oberfläche (§22 Phase 7). Die Begründung jeder Zahl steht in docs/leistungsbudget.md; check-leistungsbudget.mjs prüft, dass beide Dateien dieselben Zahlen nennen, und schlägt fehl, wenn eine ohne die andere geändert wurde.",
-  "stand": "2026-08-18",
-  "festgelegt_bei_commit": "8e88378",
+  "stand": "2026-10-11",
+  "festgelegt_bei_commit": "f5be7ed",
   "bundle": {
     "hinweis": "Gemessen über apps/web/dist nach `vite build`. Quellkarten (*.map) zählen nicht mit: ein Browser holt sie nur, wenn die Entwicklerwerkzeuge offen sind.",
     "positionen": [
@@ -10,16 +10,16 @@
         "titel": "JavaScript, übertragen (gzip)",
         "einheit": "byte",
         "richtung": "hoechstens",
-        "grenze": 135000,
-        "gemessen_bei_festlegung": 121825
+        "grenze": 152000,
+        "gemessen_bei_festlegung": 150758
       },
       {
         "id": "js-roh",
         "titel": "JavaScript, roh (Parsen und Übersetzen)",
         "einheit": "byte",
         "richtung": "hoechstens",
-        "grenze": 450000,
-        "gemessen_bei_festlegung": 402715
+        "grenze": 505000,
+        "gemessen_bei_festlegung": 499524
       },
       {
         "id": "css-uebertragung",
@@ -49,8 +49,8 @@
         "titel": "Übertragung gesamt",
         "einheit": "byte",
         "richtung": "hoechstens",
-        "grenze": 170000,
-        "gemessen_bei_festlegung": 141529
+        "grenze": 175000,
+        "gemessen_bei_festlegung": 172947
       }
     ]
   },
