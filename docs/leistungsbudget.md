@@ -20,7 +20,9 @@ verbatim as they appear in `infra/leistungsbudget.json`. The drift check
 compares both literally, character by character, so neither the numbers nor
 the position names may be reformatted here.
 
-As of: **12.8.2026**, fixed at commit `aa9b943`.
+As of: **12.8.2026**, fixed at commit `aa9b943`. The two JavaScript limits and
+the total were raised on **11.10.2026** (measured on `f5be7ed` with React 19.3
+and zod 4.6); the reason is under "Why these numbers".
 
 ---
 
@@ -52,14 +54,16 @@ later.
 
 ## 2. The limits of the artefact
 
-| Position (as the checker greps it) | Meaning | Limit | Measured 12.8.2026 | Headroom |
+| Position (as the checker greps it) | Meaning | Limit | Measured when fixed | Headroom |
 |---|---|---:|---:|---:|
-| JavaScript, übertragen (gzip) | JavaScript, transferred (gzip) | 135.000 B | 121.825 B | 11 % |
-| JavaScript, roh (Parsen und Übersetzen) | JavaScript, raw (parse and compile) | 450.000 B | 402.715 B | 12 % |
+| JavaScript, übertragen (gzip) | JavaScript, transferred (gzip) | 152.000 B | 150.758 B (11.10.2026) | 0,8 % |
+| JavaScript, roh (Parsen und Übersetzen) | JavaScript, raw (parse and compile) | 505.000 B | 499.524 B (11.10.2026) | 1,1 % |
 | CSS, übertragen (gzip) | CSS, transferred (gzip) | 8.000 B | 3.298 B | 142 % |
 | Schriften, übertragen | Fonts, transferred | 32.000 B | 15.928 B | 101 % |
 | Symbole der PWA, übertragen | PWA icons, transferred | 12.000 B | — (position added 18.8.2026) | — |
-| Übertragung gesamt | Total transfer | 170.000 B | 141.529 B | 20 % |
+| Übertragung gesamt | Total transfer | 175.000 B | 172.947 B (11.10.2026) | 1,2 % |
+
+Rows without a date were measured on 12.8.2026.
 
 The dash in the icons row is not an oversight. The position was created
 **before** the first icon byte existed — exactly in the order §1 of this
@@ -121,6 +125,21 @@ posture.** On 18.8.2026 the bundle weighs 143.899 B; with 12.000 B of icons and
 the service worker it stays below 170.000 B. Raising it "because something is
 being added now" would be precisely the path of least resistance that §5 is
 meant to make uncomfortable.
+
+**Raised on 11.10.2026: JavaScript, transferred 135.000 → 152.000 B; JavaScript,
+raw 450.000 → 505.000 B; total transfer 170.000 → 175.000 B.** The paragraphs
+above give the original reasoning and still hold for any *new* dependency. What
+this raise buys is staying on the current releases of the two libraries the
+dashboard is built on: React 19.2.8 → 19.3.0 and zod 4.4.3 → 4.6.5. They had
+been held back since 3.10.2026 because main sat 596 B under the old JavaScript
+limit. Measured on the same tree before and after the update: JavaScript,
+transferred 134.625 → 150.758 B (React ≈ 8,7 kB and zod ≈ 7,4 kB of it, as
+measured separately on CI in issue #21); raw 448.733 →
+499.524 B; total 156.813 → 172.947 B. The owner decided to take both updates
+before the first release rather than pin the dashboard to old versions or cut
+features for the bytes. The new limits are the measured values plus a margin of
+about one percent — deliberately small, so that the next dependency that grows
+the bundle again meets the budget and a decision, exactly as above.
 
 ---
 
