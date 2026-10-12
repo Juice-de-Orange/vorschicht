@@ -5,14 +5,17 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-12
+
 ### Added
 
-- Initial public release. Phases 0–8 of the build plan (`CLAUDE.md` §22) are closed: budget guardian
-  on official rate-limit data, model access layer with a headless Claude Code backend, locked and
-  optional gates, Planner → Coder → Reviewer chain with file claims and a merge queue, containment
-  hooks, deploy engine with auto-rollback, escalation inbox with policy memory, document vault, source
-  registry, radar scans, idle audits, the internal audit department (Betriebsprüfung), the dashboard
-  PWA with office view, weekly report and Controlling analytics.
+- First public release, experimental and not in production use (see the README's status section).
+  Phases 0–8 of the build plan (`CLAUDE.md` §22) are closed: budget guardian on official rate-limit
+  data, model access layer with a headless Claude Code backend, locked and optional gates, Planner →
+  Coder → Reviewer chain with file claims and a merge queue, containment hooks, deploy engine with
+  auto-rollback, escalation inbox with policy memory, document vault, source registry, radar scans,
+  idle audits, the internal audit department (Betriebsprüfung), the dashboard PWA with office view,
+  weekly report and Controlling analytics.
 - Apache-2.0 licence, contributor documentation, hardened CI, CodeQL and Dependabot.
 
 ### Changed
@@ -47,7 +50,6 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`exec app node dist/cli/invite.js --purpose=rescue`), not `vorschicht-invite` / `exec orchestrator`.
 - `.env.example` no longer sets `VORSCHICHT_PROJECTS_ROOT=/opt`, which bind-mounted the host's whole
   `/opt` read-write into the orchestrator when the quick start was followed literally.
-
 - The documented restore works: `DROP DATABASE` / `CREATE DATABASE` run as two commands on a
   connection to `postgres` (one `-c` with both is a transaction block, and a database cannot be
   dropped from a session connected to it). `docs/OPERATIONS.md` also covers the base compose file's
@@ -93,7 +95,6 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - The onboarding procedure ("First project") has not been executed end to end in the published
   state; it needs a subscription. `docs/OPERATIONS.md` says what was and was not run.
-
 - Phase 9 (supervised pilot operation) has not started; five gates are deferred to a target host.
 - The dashboard UI is German by specification; an English UI is an open issue.
 - An auth incident is announced over ntfy, in `event_log` and in the overview's strip, but it does
