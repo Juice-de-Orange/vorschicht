@@ -470,8 +470,22 @@ async function main(): Promise<void> {
       mcpServerEntry: config.mcpServerEntry ?? null,
     },
     personaFlavor: async () => personaFlavorEnabled(await personas.mode()),
+    // #26: a session refused mid-life (an expired or revoked token) closes the
+    // start-up gate again, so the next self-check pass is the daemon-level auth
+    // incident — alert, event, everything parked — instead of only the one
+    // task that noticed parking itself.
+    onAuthIncident: ({ runId, problem }) => {
+      logger.error({ runId }, 'Sitzung bei der Anmeldung abgewiesen — Auth-Vorfall');
+      smokeGate.reportAuthIncident(`Sitzung ${runId} abgewiesen: ${problem}`);
+    },
     onWarning: (message) => logger.warn({}, message),
   });
+
+  /** §6.1: no work is accepted until one session has demonstrably run. The
+   * backoff after a failed probe lives in the gate. */
+  const smokeGate = new SmokeGate(() =>
+    smokeAndReport({ runner, cwd: `${config.runsRoot}/smoke`, meter, notifier, logger }),
+  );
 
   /**
    * The guardian's "stop accepting work" handle (§7.2), now a real queue.
@@ -711,11 +725,6 @@ async function main(): Promise<void> {
   let lastTokenUrgency: string | null = null;
   let authIncidentParked = false;
   let lastWorktreeGc = 0;
-  /** §6.1: no work is accepted until one session has demonstrably run. The
-   * backoff after a failed probe lives in the gate. */
-  const smokeGate = new SmokeGate(() =>
-    smokeAndReport({ runner, cwd: `${config.runsRoot}/smoke`, meter, notifier, logger }),
-  );
   /** §7.1's estimate runs on its own, slower cadence than the tick. */
   let nextEstimateAt = 0;
   /** Logged only when it changes — an unchanged number every minute is noise. */
@@ -1194,9 +1203,10 @@ async function main(): Promise<void> {
           //
           // Among the checks rather than in `onReady`, because it is the only
           // one of them that notices a rejected token: `claude auth status`
-          // answers `loggedIn` for any token that is set. A probe that fails on
-          // authentication is therefore a failed self-check — an auth incident
-          // — and not a daemon that is "bereit" (`SmokeGate`).
+          // answers `loggedIn` for any token that is set. A failed probe is
+          // therefore a failed self-check — an auth incident when the token was
+          // refused, a self-check failure otherwise (#26) — and never a daemon
+          // that is "bereit" (`SmokeGate`).
           return [...checks, await smokeGate.check()];
         },
         wrapUp,
@@ -1237,8 +1247,8 @@ async function main(): Promise<void> {
           }
           await maybeCollectWorktrees();
 
-          // A probe that failed for any other reason than authentication: no
-          // work, and the next attempt after its backoff (`runChecks` above).
+          // A failed probe never gets here any more (it fails the pass, #26);
+          // kept as the last word on "no work before one session has run".
           if (!smokeGate.passed) return;
 
           // §7.1's estimate, refreshed before the guardian is asked anything.

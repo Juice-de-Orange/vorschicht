@@ -169,21 +169,12 @@ export async function smokeAndReport(deps: SmokeDeps): Promise<SmokeResult> {
 
   if (!result.ok) {
     deps.logger?.warn({ runId: result.runId }, result.problem ?? 'Startprobe fehlgeschlagen');
-    // An auth failure is reported by `selfCheckCycle`, which `SmokeGate` hands
-    // it to as a failed check: one alert that says "Auth-Vorfall", not that one
-    // plus a second calling the same dead token a failed probe.
-    if (result.authIncident) return result;
-    await deps.notifier
-      ?.send({
-        topic: 'alerts',
-        title: 'Vorschicht: Startprobe fehlgeschlagen',
-        message:
-          `${result.problem}\n\nDer Daemon nimmt keine Arbeit an und versucht es in ` +
-          `${SMOKE_RETRY_MS / 60_000} Minuten erneut (§6.1).`,
-        priority: 'high',
-        tags: ['warning'],
-      })
-      .catch(() => undefined);
+    // Every failed probe is reported by `selfCheckCycle`, which `SmokeGate`
+    // hands it to as a failed check — an auth failure as "Auth-Vorfall", any
+    // other as "Selbstprüfung fehlgeschlagen", with the event saying whether
+    // ntfy took the alert. A push from here as well would announce the same
+    // failure twice. (It used to be the *only* report of a non-auth failure,
+    // and the cycle logged "Daemon ist bereit" above it every pass — #26.)
     return result;
   }
 
@@ -227,8 +218,16 @@ export async function smokeAndReport(deps: SmokeDeps): Promise<SmokeResult> {
  * above a daemon that takes no work (observed on a fresh install with the
  * `.env.example` placeholder still in place).
  *
- * Only the auth failure is handed on. Every other failed probe keeps the
- * response it had — its own alert and a retry after `SMOKE_RETRY_MS`.
+ * Every failed probe is handed on, not only the auth failure (#26): a probe
+ * that failed for any other reason left the same "bereit" line above the same
+ * idle daemon. The failure carries `auth` so the cycle names it correctly —
+ * the probe's sentence mentions §6.1 either way.
+ *
+ * And a token can die after the probe passed. Task sessions notice first and
+ * park their own tasks, while `claude auth status` keeps saying `loggedIn`;
+ * `reportAuthIncident` is how the runner tells the gate, which turns the next
+ * pass into the daemon-level auth incident (alert, event, everything parked)
+ * and lets a fresh probe decide when it is over.
  */
 export class SmokeGate {
   /** §6.1: no work is accepted until one session has demonstrably run. */
@@ -236,8 +235,8 @@ export class SmokeGate {
   /** Backoff after a failed probe — retrying every tick would spend a session
    * every fifteen seconds against a host that has just proved it cannot run one. */
   private notBefore = 0;
-  /** The last probe's auth failure, repeated until a probe passes. */
-  private authProblem: string | null = null;
+  /** The last failure, repeated until a probe passes. */
+  private failure: { reason: string; auth: boolean } | null = null;
 
   constructor(
     private readonly probe: () => Promise<SmokeResult>,
@@ -251,14 +250,29 @@ export class SmokeGate {
       const smoke = await this.probe();
       if (smoke.ok) {
         this.passed = true;
-        this.authProblem = null;
+        this.failure = null;
         return { ok: true };
       }
       this.notBefore = this.now() + SMOKE_RETRY_MS;
-      this.authProblem = smoke.authIncident
-        ? (smoke.problem ?? 'Startprobe (§6.1): Auth-Vorfall')
-        : null;
+      this.failure = {
+        reason: smoke.problem ?? 'Startprobe (§6.1) fehlgeschlagen',
+        auth: smoke.authIncident,
+      };
     }
-    return this.authProblem === null ? { ok: true } : { ok: false, reason: this.authProblem };
+    return this.failure === null
+      ? { ok: true }
+      : { ok: false, reason: this.failure.reason, auth: this.failure.auth };
+  }
+
+  /**
+   * A session was refused after the probe had passed — the token expired or
+   * was revoked mid-life. Closes the gate until a probe passes again, after the
+   * usual backoff: the refused session is the evidence, so no probe is spent
+   * on confirming it.
+   */
+  reportAuthIncident(problem: string): void {
+    this.passed = false;
+    this.failure = { reason: problem, auth: true };
+    this.notBefore = this.now() + SMOKE_RETRY_MS;
   }
 }

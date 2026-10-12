@@ -360,6 +360,19 @@ overview's "Auth-Vorfall" strip repeats it.
 `Selbstprüfung bestanden — Daemon ist bereit.` does not appear until a session
 has authenticated.
 
+**A token that dies while the studio runs** (expired or revoked after the
+start-up probe passed) is noticed by the next task session, which parks its own
+task. That refusal also closes the start-up gate again: the log says `Sitzung
+bei der Anmeldung abgewiesen — Auth-Vorfall`, the next self-check pass is the
+same auth incident as above (alert, `auth.incident`, all running work parked),
+and a fresh probe five minutes later decides whether it is over.
+
+**A start-up probe that fails for another reason** (the CLI does not start, the
+run directory is not writable, …) is a failed self-check as well: `Selbstprüfung
+rot` in the log, `system.selfcheck_failed` in `event_log`, "Selbstprüfung
+fehlgeschlagen" on `vorschicht-alerts`, a new probe every five minutes — and no
+"bereit" line until one passes.
+
 The token lives **only** in the auth volume and in the `.env` on this host
 (A5). Carrying it elsewhere for a run is not a path this project knows — which
 is also why the internal audit runs on the production host and not locally

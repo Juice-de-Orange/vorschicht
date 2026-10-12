@@ -63,6 +63,13 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The bot identity of agent commits comes from `GIT_AUTHOR_NAME` / `GIT_AUTHOR_EMAIL` in `.env`, as
   `.env.example` always said; nothing read them before and every commit carried the placeholder
   address. Unset or blank, the neutral default `Vorschicht Bot <vorschicht-bot@example.com>` applies.
+- The daemon no longer logs "Selbstprüfung bestanden — Daemon ist bereit." while a start-up probe that
+  failed for a reason other than authentication keeps failing; such a probe is a failed self-check
+  (alert, `system.selfcheck_failed`, no work) until one passes, and its recovery is not announced as
+  a restored login.
+- A Claude token that expires or is revoked after the start-up probe passed now raises the
+  daemon-level auth incident (ntfy alert, `auth.incident`, all running work parked) as soon as a
+  session is refused, instead of only parking the task that noticed.
 
 ### Known limitations
 
