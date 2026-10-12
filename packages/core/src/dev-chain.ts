@@ -70,6 +70,7 @@ import {
   type TaskState,
 } from '@vorschicht/shared';
 import type { ClaimConflict, ClaimRegistry } from './claim-registry.js';
+import { DEFAULT_OWNER_ACTOR } from './config.js';
 import {
   type ChainPromptContext,
   coderPrompt,
@@ -208,6 +209,16 @@ export interface DevChainDeps {
   maxReviewRounds?: number;
   infra?: { attempts: number; backoffMs: number };
   sleep?(ms: number): Promise<void>;
+  /**
+   * Who the operator is in the logs when he acts outside a dashboard session —
+   * a manual pause (A26), an answer that names no one — and the
+   * WebAuthn user name. `VORSCHICHT_OWNER_ACTOR`, `operator` by default.
+   *
+   * Dashboard acts are logged as `dashboard:<credentialId>` regardless; this is
+   * the name for everything else. It is a label on append-only rows, never a
+   * key anything is looked up by, so changing it changes new rows only.
+   */
+  ownerActor?: string;
   onWarning?(message: string): void;
 }
 
@@ -436,7 +447,7 @@ export class DevChain {
               }
             : null,
         freeText: escalation.freeText,
-        decidedBy: escalation.answeredBy ?? 'max',
+        decidedBy: escalation.answeredBy ?? this.deps.ownerActor ?? DEFAULT_OWNER_ACTOR,
         decidedAt: escalation.answeredAt?.toISOString() ?? new Date().toISOString(),
       }),
       escalationNumber: escalation.number,

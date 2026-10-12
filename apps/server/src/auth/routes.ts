@@ -40,6 +40,8 @@ export interface AuthRouteDeps {
   origin: string;
   /** False only for local HTTP development; production is always true. */
   secureCookies: boolean;
+  /** `VORSCHICHT_OWNER_ACTOR` (`config.ownerActor`): the WebAuthn user name. */
+  ownerActor: string;
 }
 
 /** Stable user handle: there is exactly one user, and it is the operator. */
@@ -64,8 +66,21 @@ export function neuesteZuerst<T extends { createdAt: Date }>(rows: readonly T[])
   return [...rows].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 }
 
-const USER_HANDLE = new TextEncoder().encode('vorschicht-max');
-const USER_NAME = 'max';
+/**
+ * The one WebAuthn user, named after the owner actor.
+ *
+ * The handle is derived from the name rather than random: an installation that
+ * ran under the old hard-wired name sets it as `VORSCHICHT_OWNER_ACTOR` and its
+ * authenticators keep seeing the handle they registered under. Login never
+ * compares the handle (credentials are looked up by id), so a changed name
+ * costs nothing but a second account entry in the authenticator's list.
+ */
+export function webauthnUser(ownerActor: string) {
+  return {
+    userID: new TextEncoder().encode(`vorschicht-${ownerActor}`),
+    userName: ownerActor,
+  };
+}
 
 const registerBody = z.object({
   invite: z.string().min(1).optional(),
@@ -133,8 +148,7 @@ export function createAuthRoutes(deps: AuthRouteDeps): Hono {
     const options = await generateRegistrationOptions({
       rpName: deps.rpName,
       rpID: deps.rpId,
-      userID: USER_HANDLE,
-      userName: USER_NAME,
+      ...webauthnUser(deps.ownerActor),
       attestationType: 'none',
       // Prevents registering the same authenticator twice, which would look
       // like two credentials while being one device (§19 wants two devices).

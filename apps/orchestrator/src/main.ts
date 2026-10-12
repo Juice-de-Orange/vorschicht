@@ -338,6 +338,7 @@ async function main(): Promise<void> {
       ) as ReturnType<typeof fn>,
     escalations,
     eventLog,
+    ownerActor: config.ownerActor,
   });
 
   const mailer = createMailer(config);
@@ -515,6 +516,7 @@ async function main(): Promise<void> {
     // only took effect after a restart is not a pause. `evaluate()` runs at the
     // head of every tick (A57.5), so the switch takes hold within one.
     manualPause: () => controllingSettings.manualPause(),
+    ownerActor: config.ownerActor,
   });
 
   const claims = new ClaimRegistry({ sql, tasks, projects, eventLog });
@@ -536,6 +538,7 @@ async function main(): Promise<void> {
     findings,
     escalations,
     gateTools: (project) => gateTools(project),
+    ownerActor: config.ownerActor,
     onWarning: (message) => logger.warn({}, message),
   });
   /**
@@ -664,6 +667,7 @@ async function main(): Promise<void> {
       // switch has to take hold without a restart, or it is not a switch.
       sparbetrieb: async () => (await controllingSettings.sparbetrieb()).wert,
       selfRootPath: `${config.projectsRoot}/vorschicht`,
+      ownerActor: config.ownerActor,
       concurrency: CONCURRENCY_BY_PLAN[config.planProfile],
       // A25's second half, for the dev chain rather than the merge queue. Same
       // number, different subsystem, and the message has to say which one — a

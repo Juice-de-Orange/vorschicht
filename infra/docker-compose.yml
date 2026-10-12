@@ -120,6 +120,8 @@ services:
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN}
       WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID}
       WEBAUTHN_RP_NAME: ${WEBAUTHN_RP_NAME:-Vorschicht}
+      # The WebAuthn user name. Both services read it; see .env.example.
+      VORSCHICHT_OWNER_ACTOR: ${VORSCHICHT_OWNER_ACTOR:-}
       SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET fehlt}
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
       CLAUDE_CLI_VERSION: ${CLAUDE_CLI_VERSION:-2.1.220}
@@ -212,6 +214,9 @@ services:
       PLAN_PROFILE: ${PLAN_PROFILE:-max_20x}
       TZ: ${TZ:-Europe/Vienna}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Who the operator is in the logs outside a dashboard session (manual
+      # pause, ntfy card answers). Blank means the default, `operator`.
+      VORSCHICHT_OWNER_ACTOR: ${VORSCHICHT_OWNER_ACTOR:-}
       # A20/A36: the bot every agent commit is authored by. git reads these four
       # ahead of any config, so the daemon's own commits, a session's commits and
       # the merge queue's authorship check all use the same identity. Unset, the

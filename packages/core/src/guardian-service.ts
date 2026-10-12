@@ -24,6 +24,7 @@ import {
 } from '@vorschicht/shared';
 import type postgres from 'postgres';
 import type { StoppableRun } from './active-runs.js';
+import { DEFAULT_OWNER_ACTOR } from './config.js';
 import type { EventLog } from './event-log.js';
 import type { Notifier } from './notify.js';
 import type { UsageMeter } from './usage-meter.js';
@@ -78,6 +79,16 @@ export interface GuardianDeps {
    * there is one answer rather than two that can disagree.
    */
   manualPause?: () => Promise<ManualPause>;
+  /**
+   * Who the operator is in the logs when he acts outside a dashboard session —
+   * a manual pause (A26), an answered ntfy card, a waived finding — and the
+   * WebAuthn user name. `VORSCHICHT_OWNER_ACTOR`, `operator` by default.
+   *
+   * Dashboard acts are logged as `dashboard:<credentialId>` regardless; this is
+   * the name for everything else. It is a label on append-only rows, never a
+   * key anything is looked up by, so changing it changes new rows only.
+   */
+  ownerActor?: string;
   now?: () => number;
   /** Overridable so the hard-stop grace can be tested without waiting a minute. */
   graceMs?: number;
@@ -101,6 +112,10 @@ export class GuardianService {
   private graceTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private readonly deps: GuardianDeps) {}
+
+  private get ownerActor(): string {
+    return this.deps.ownerActor ?? DEFAULT_OWNER_ACTOR;
+  }
 
   private now(): number {
     return this.deps.now?.() ?? Date.now();
@@ -140,7 +155,7 @@ export class GuardianService {
    * price of one failed query.
    *
    * The effective value is kept in `manualPause` so `record()` still attributes
-   * a paused transition to `max` rather than to the scheduler — the row would
+   * a paused transition to the operator (`ownerActor`) rather than to the scheduler — the row would
    * otherwise say the budget stopped the studio when a person did.
    */
   private async readManualPause(): Promise<ManualPause> {
@@ -345,14 +360,14 @@ export class GuardianService {
         ${this.deps.sql.json(decision.reason as postgres.JSONValue)},
         ${decision.governingWindow},
         ${this.deps.sql.json(decision.latches as unknown as postgres.JSONValue)},
-        ${this.manualPause.active ? 'max' : 'system'}
+        ${this.manualPause.active ? this.ownerActor : 'system'}
       )
     `;
 
     const text = describeGuardian(decision);
     await this.deps.eventLog.append({
       kind: 'guardian.state_changed',
-      actor: this.manualPause.active ? 'max' : 'controlling',
+      actor: this.manualPause.active ? this.ownerActor : 'controlling',
       payload: {
         state: decision.state,
         trigger,

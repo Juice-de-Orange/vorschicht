@@ -21,6 +21,15 @@ describe('loadConfig', () => {
     expect(config.planProfile).toBe('max_20x');
   });
 
+  it('names the owner actor neutrally unless VORSCHICHT_OWNER_ACTOR says otherwise', () => {
+    // The actor that the operator's own acts are logged under outside a
+    // dashboard session (manual pause, ntfy card answers, a waived finding).
+    // It used to be one person's first name, hard-wired.
+    expect(loadConfig(VALID).ownerActor).toBe('operator');
+    expect(loadConfig({ ...VALID, VORSCHICHT_OWNER_ACTOR: 'erika' }).ownerActor).toBe('erika');
+    expect(loadConfig({ ...VALID, VORSCHICHT_OWNER_ACTOR: '  ' }).ownerActor).toBe('operator');
+  });
+
   // §2 is a hard rule, not a preference. The presence of an API key means
   // someone arranged for money to be spendable — fail at that moment, loudly,
   // rather than discovering it on a bill.

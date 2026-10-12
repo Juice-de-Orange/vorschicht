@@ -17,6 +17,13 @@ import { z } from 'zod';
 
 const nonEmpty = z.string().min(1);
 
+/**
+ * The actor name for the operator's own acts outside a dashboard session, when
+ * `VORSCHICHT_OWNER_ACTOR` names none. Neutral on purpose: it used to be one
+ * person's first name, hard-wired in five places.
+ */
+export const DEFAULT_OWNER_ACTOR = 'operator';
+
 const configShape = z.object({
   // --- paths (A2/A33) ---
   projectsRoot: nonEmpty.default('/opt'),
@@ -61,6 +68,12 @@ const configShape = z.object({
   publicOrigin: z.url(),
   webauthnRpId: nonEmpty,
   webauthnRpName: nonEmpty.default('Vorschicht'),
+  /**
+   * Who the operator is in the logs when he acts outside a dashboard session
+   * (manual pause, ntfy card answers, a waived finding), and the WebAuthn user
+   * name. Dashboard acts carry `dashboard:<credentialId>` either way.
+   */
+  ownerActor: nonEmpty.default(DEFAULT_OWNER_ACTOR),
   sessionSecret: z.string().min(32, 'SESSION_SECRET braucht mindestens 32 Zeichen'),
 
   // --- Claude Code access (§6.1) ---
@@ -267,6 +280,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     publicOrigin: env.PUBLIC_ORIGIN,
     webauthnRpId: env.WEBAUTHN_RP_ID,
     webauthnRpName: env.WEBAUTHN_RP_NAME,
+    ownerActor: blankToUndefined(env.VORSCHICHT_OWNER_ACTOR),
     sessionSecret: env.SESSION_SECRET,
     claudeOauthToken: env.CLAUDE_CODE_OAUTH_TOKEN,
     claudeCliVersion: env.CLAUDE_CLI_VERSION,

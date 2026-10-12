@@ -56,7 +56,7 @@ export const SOURCE_AUDIT_ACTIONS = {
 export type SourceAuditAction = keyof typeof SOURCE_AUDIT_ACTIONS;
 
 export interface SourceAuditEntry {
-  /** `dashboard:<credentialId>` from a session, or `max` through §15's card. */
+  /** `dashboard:<credentialId>` from a session, or the owner actor through §15's card. */
   actor: string;
   act: SourceAuditAction;
   /** The source's standing before the act, or null when it was only just proposed. */

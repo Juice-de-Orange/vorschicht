@@ -28,6 +28,13 @@ async function serviceEnvironment(service: string): Promise<string[]> {
 }
 
 describe('infra/docker-compose.yml reicht dokumentierte Einstellungen durch', () => {
+  it.each(['app', 'orchestrator'])(
+    'gibt %s den Besitzer-Akteur VORSCHICHT_OWNER_ACTOR',
+    async (service) => {
+      expect(await serviceEnvironment(service)).toContain('VORSCHICHT_OWNER_ACTOR');
+    },
+  );
+
   it('gibt dem Orchestrator die Bot-Identität als Autor und Committer (A20/A36)', async () => {
     const keys = await serviceEnvironment('orchestrator');
     expect(keys).toEqual(

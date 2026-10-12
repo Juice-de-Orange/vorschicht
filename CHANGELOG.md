@@ -17,6 +17,11 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- The operator's own acts outside a dashboard session (manual pause, answered ntfy cards, waived
+  audit findings) and the passkey user name are logged under `VORSCHICHT_OWNER_ACTOR`, default
+  `operator`, instead of a hard-wired first name. Existing rows are not rewritten; an installation
+  that ran an earlier build sets `VORSCHICHT_OWNER_ACTOR=max` to keep its log and its passkey user
+  handle continuous.
 - The specification's 162-item assumption diary is condensed into `docs/adr/`; `CLAUDE.md` carries an
   index (Appendix A) that the audit reads.
 - Host-specific deployment files are generic templates (`infra/docker-compose.override.example.yml`,

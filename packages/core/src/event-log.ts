@@ -24,7 +24,7 @@ export type EventKind = (typeof EVENT_KINDS)[number];
 
 export interface NewEvent {
   kind: EventKind;
-  /** 'system', 'max', or a role name such as 'reviewer'. */
+  /** 'system', the owner actor (`VORSCHICHT_OWNER_ACTOR`), `dashboard:<id>`, or a role such as 'reviewer'. */
   actor: string;
   projectId?: string | null;
   taskId?: string | null;
