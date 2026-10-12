@@ -51,6 +51,10 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `VORSCHICHT_ACTOR`, required to apply).
 - An unknown task or run id says so instead of reporting a defect in the application; the state
   filter no longer lists "Wartet auf deine Entscheidung" twice.
+- The host overlay `infra/docker-compose.override.yml` is git-ignored, so `rollout-remote.sh`'s
+  clean-tree check no longer refuses every rollout on a host that follows the documented layout.
+  `docs/OPERATIONS.md` names that path everywhere (it used to say the stack root, where none of the
+  scripts look).
 
 ### Known limitations
 

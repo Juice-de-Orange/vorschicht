@@ -42,12 +42,15 @@ in the examples below; adjust to your checkout). The two Compose files
 **always** belong together — the override carries the bind mounts under the
 data root (`/srv/vorschicht` by default), and without it the stack starts with
 empty volumes. Copy `infra/docker-compose.override.example.yml` to
-`docker-compose.override.yml` once and keep it next to the base file.
+`infra/docker-compose.override.yml` once and keep it next to the base file —
+that is the path `watchdog.sh`, `rollout-remote.sh` and the build report
+compose with, and the one `.gitignore` covers, so the rollout's clean-tree
+check does not trip over it.
 
 ```bash
 ssh <host>
 cd /opt/vorschicht
-alias vc='docker compose -f infra/docker-compose.yml -f docker-compose.override.yml --env-file .env'
+alias vc='docker compose -f infra/docker-compose.yml -f infra/docker-compose.override.yml --env-file .env'
 
 vc ps                 # state of all four services
 vc up -d              # start (idempotent)
@@ -227,7 +230,7 @@ and `--backups <dir>` another directory.
 
 **Where the backups are** depends on how the stack was started:
 
-- **With the host overlay** (`docker-compose.override.yml`):
+- **With the host overlay** (`infra/docker-compose.override.yml`):
   `/srv/vorschicht/backups/daily` (14 kept) and `.../weekly` (8) — the probe's
   default.
 - **With the base compose file alone** (the README quick start): in the named
@@ -537,7 +540,7 @@ docker compose -f infra/docker-compose.yml --env-file .env up -d orchestrator
 ```
 
 On a host with the override file, add it:
-`-f infra/docker-compose.yml -f docker-compose.override.yml`.
+`-f infra/docker-compose.yml -f infra/docker-compose.override.yml`.
 
 **Check:**
 

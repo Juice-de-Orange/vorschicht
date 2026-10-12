@@ -2,7 +2,7 @@
 # Vorschicht stack (§3).
 #
 # Base file — runs standalone on any machine with Docker. The production host
-# adds `docker-compose.override.yml` on top (copied and adapted from
+# adds `infra/docker-compose.override.yml` on top (copied and adapted from
 # `docker-compose.override.example.yml`): a base file plus a host-specific
 # overlay (A33).
 #
@@ -144,7 +144,7 @@ services:
       #
       # The same volume the orchestrator mounts (docs.search, §6.6's leak scan)
       # and the backup sidecar tars (§18, A14). All three have to be the *same*
-      # filesystem, which is why `docker-compose.override.yml` carries an `app`
+      # filesystem, which is why `infra/docker-compose.override.yml` carries an `app`
       # section too: that overlay replaces this named volume with a host bind,
       # and a service mounting only one of the two would store uploads where the
       # vault's readers and the backup cannot see them.
