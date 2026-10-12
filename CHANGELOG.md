@@ -83,6 +83,11 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   next migration as `00NN_<name>.sql` in the existing layout (it used to fail with "drizzle.config.json
   file does not exist", and without a baseline it would have written a `0000_*.sql` that recreates the
   tables).
+- With the host overlay the orchestrator reads `/backups` from the same bind the backup sidecar writes
+  to; it kept the base file's named volume before, never saw `.last-result` and reported neither a
+  successful nor a failed backup.
+- `node …/node_modules/@vorschicht/db/dist/migrate.js` migrates when the path is a symlink, as pnpm
+  lays it out in the orchestrator image; it used to run nothing and exit 0.
 
 ### Known limitations
 
