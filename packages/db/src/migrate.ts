@@ -13,7 +13,7 @@
  *     race the schema.
  */
 import { createHash } from 'node:crypto';
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
@@ -126,7 +126,24 @@ async function main(): Promise<void> {
   }
 }
 
+/**
+ * Whether this file is the process's entry point. `argv[1]` is compared after
+ * resolving symlinks, the way Node resolves `import.meta.url`: in the
+ * orchestrator image pnpm links `@vorschicht/db` into `node_modules`, and a
+ * literal comparison made `node …/node_modules/@vorschicht/db/dist/migrate.js`
+ * exit 0 without running anything.
+ */
+function invokedDirectly(): boolean {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return realpathSync(entry) === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
+  }
+}
+
 // Only run when invoked directly, so importing this module in tests is safe.
-if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
+if (invokedDirectly()) {
   await main();
 }
