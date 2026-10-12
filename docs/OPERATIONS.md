@@ -256,6 +256,14 @@ Every night at 02:30, three files with the same timestamp appear:
 `db-<stamp>.dump`, `docs-<stamp>.tar.gz`, `transcripts-<stamp>.tar.gz`.
 `vc exec backup ls /backups/daily` lists them in either layout.
 
+**A backup now** — before an update, before a restore drill, or to see the path
+work — runs the same script the schedule runs, in the running sidecar:
+
+```bash
+vc exec backup /usr/local/bin/backup-run.sh
+vc exec backup cat /backups/.last-result   # outcome=ok, one line per component
+```
+
 **The real restore**, should it ever be needed — order matters. `vc` is the
 alias from the first section; with the base compose file alone it is
 `docker compose -f infra/docker-compose.yml --env-file .env`.
@@ -313,6 +321,13 @@ Unpacking adds and overwrites; a file created after the backup stays where it
 is. The database then has no row for it, which is harmless for the vault and
 the trace views — delete the directories' contents first if you want the exact
 state of the backup.
+
+**After the restore** the orchestrator starts on the restored database as on
+any other: its migration check finds the dump's `_vorschicht_migrations` rows
+and logs `Schema ist aktuell`. This sequence — data created, backup now, files
+and database wiped, the steps above, `vc up -d`, then a full `vc stop` /
+`vc up -d` — was run on the base compose file (2026-10-12): every row and file
+came back and survived the restart.
 
 **What explicitly does not happen:** the migrations are **not** run again. The
 dump carries its schema and its `_vorschicht_migrations` rows with it; a
