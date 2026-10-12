@@ -91,3 +91,7 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Phase 9 (supervised pilot operation) has not started; five gates are deferred to a target host.
 - The dashboard UI is German by specification; an English UI is an open issue.
+- An auth incident is announced over ntfy, in `event_log` and in the overview's strip, but it does
+  not create an inbox card.
+- Unknown `VORSCHICHT_*` variables in `.env` are not reported at start; a misspelt setting is
+  silently ignored.
