@@ -5,6 +5,12 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- README: the AI note is the one line "Built with AI assistance."; the build-loop warning for
+  `vorschicht-build.sh` moved to *Development*; the CI-harness issue is listed as help wanted, not
+  as a good first issue.
+
 ## [0.1.1] - 2026-10-13
 
 A patch release: two fixes and a dependency update. No migrations, no new settings.
