@@ -16,6 +16,8 @@ design without an API key and without API costs.
 
 ![Office view of the dashboard: five desks in five states](docs/media/buero-fuenf-zustaende.png)
 
+Built with AI assistance.
+
 ## Why
 
 Every serious defect an AI-assisted build ships and later catches tends to belong to one class: the
@@ -160,8 +162,8 @@ gates are Phase 9: two weeks of supervised operation, fifteen merged tasks, rest
 drills, a final audit. That is the roadmap, and it needs an operator who runs it.
 
 Good first issues are labelled in the tracker: an English UI (i18n), translating the German
-comments of a module, a `localhost` quick-start profile, the dark theme the CSS already prepares, a
-CI job that runs `gate-in-container.sh`.
+comments of a module, a `localhost` quick-start profile, the dark theme the CSS already prepares.
+Help is also wanted on a CI job that runs `gate-in-container.sh`.
 
 ## Development
 
@@ -182,19 +184,16 @@ volume, and takes several times as long (about 20 minutes on the machine it was 
 Details, the paid checks (`pnpm check:*` — they start real sessions and cost subscription budget) and
 the screenshot scripts are in [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
 
+`vorschicht-build.sh` is the build loop this repository was developed with: it runs `claude -p`
+against `CLAUDE.md` phase by phase, with the exit gates as the contract and permissions skipped —
+run it only in a sandbox. The German test titles and comments come from that workflow; translating
+them is a welcome contribution.
+
 ## Contributing
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md). `CLAUDE.md` is the normative spec: changes to behaviour
 start there. A bug fix comes with a test that fails without it; every gate stays green; findings
 are blockers. Security reports go through private vulnerability reporting ([`SECURITY.md`](SECURITY.md)).
-
-## Built with
-
-This repository was built almost entirely by Claude Code sessions working against `CLAUDE.md`,
-phase by phase, with the exit gates as the contract and the internal audit as the second party.
-The build loop itself (`vorschicht-build.sh`) is in the repo; it runs `claude -p` with permissions
-skipped and must only ever run in a sandbox. The German test titles and comments are a trace of
-that workflow, not a style choice — translating them is a welcome contribution.
 
 ## Licence
 
