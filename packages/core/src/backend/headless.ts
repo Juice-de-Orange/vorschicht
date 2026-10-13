@@ -60,6 +60,15 @@ const EXIT_AFTER_RESULT_MS = 30_000;
 const AUTH_FAILURE =
   /401|authentication_error|Failed to authenticate|OAuth token has expired|invalid api key/i;
 
+/**
+ * What the pinned CLI (2.1.220) says when it gave up without ever reaching the
+ * API — captured with the network switched off (`--network none`), so nothing
+ * left the machine: ten `api_retry` frames with `error_status: null`, then an
+ * error result "API Error: Unable to connect to API (ENOTIMP)" with
+ * `api_error_status: null`, about three minutes in.
+ */
+const UNREACHABLE = /Unable to connect to API/i;
+
 export interface HeadlessBackendOptions {
   /** Path to the pinned CLI. */
   command?: string;
@@ -199,6 +208,12 @@ class HeadlessRunHandle implements RunHandle {
   /** Assistant message ids already counted — see the turn counter in `translate`. */
   private readonly seenMessageIds = new Set<string>();
   private terminalReason: TerminationReason | null = null;
+  /**
+   * What the CLI's latest `api_retry` was about: `connect` when no HTTP answer
+   * came back at all (`error_status: null`), `status` when the API answered
+   * with an error. See the wall clock in `events`.
+   */
+  private lastApiRetry: 'connect' | 'status' | null = null;
 
   constructor(
     private readonly spec: SessionSpec,
@@ -271,7 +286,15 @@ class HeadlessRunHandle implements RunHandle {
 
     const wallClock = setTimeout(() => {
       void this.interrupt('cap_exceeded');
-      this.terminalReason = 'timeout';
+      // A session that never got one model turn and whose latest retry had no
+      // HTTP answer behind it did not run out of time on the work — it never
+      // reached the API. Without the network the CLI retries for about three
+      // minutes, which is exactly the smoke profile's wall clock, so the start
+      // probe reported "Wanduhr-Grenze des Laufs erreicht (A32)" for an
+      // offline host, every cycle. One API answer, or one turn, and it is the
+      // cap again.
+      this.terminalReason =
+        this.turns === 0 && this.lastApiRetry === 'connect' ? 'unreachable' : 'timeout';
     }, this.spec.caps.wallClockMs);
     wallClock.unref();
 
@@ -404,6 +427,13 @@ class HeadlessRunHandle implements RunHandle {
         // turn simply has none of its tools, and the model reports that and
         // stops (verified with a deliberately slow server). The runner needs
         // this before it interprets a useless result as a failed task.
+        // The CLI's own retry loop. `error_status` is the HTTP status of the
+        // failed attempt, and `null` when there was none — the request never
+        // got an answer. Verified against the pinned CLI with the network off.
+        if (subtype === 'api_retry') {
+          this.lastApiRetry = message.error_status == null ? 'connect' : 'status';
+          break;
+        }
         if (subtype === 'init') {
           yield {
             type: 'session_ready',
@@ -519,6 +549,16 @@ class HeadlessRunHandle implements RunHandle {
           (message.api_error_status === 401 || AUTH_FAILURE.test(String(message.result ?? '')))
         ) {
           this.terminalReason = 'auth_incident';
+        }
+        // The CLI gave up on its retries before any HTTP answer. Same shape as
+        // the 401 above — an error result, not a dead process — so the same
+        // reasoning applies: read here, or it is a contract violation.
+        if (
+          message.is_error === true &&
+          message.api_error_status == null &&
+          UNREACHABLE.test(String(message.result ?? ''))
+        ) {
+          this.terminalReason = 'unreachable';
         }
         // Every refused tool call, hook denials included. §6.6's second layer
         // becomes auditable without transcript parsing.

@@ -26,6 +26,11 @@ export type TerminationReason =
   | 'interrupted'
   /** Authentication failure — an auth incident (§6.1), never a task failure. */
   | 'auth_incident'
+  /**
+   * The API was never reached: every attempt failed before an HTTP answer
+   * (DNS, connect, TLS). An infra failure (A25), never a task failure.
+   */
+  | 'unreachable'
   /** The process died in a way we did not ask for. */
   | 'crashed';
 

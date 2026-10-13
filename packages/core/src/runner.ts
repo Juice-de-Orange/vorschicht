@@ -406,7 +406,8 @@ export interface RunSignals {
  *     `SessionStart` hook either, and the monitor fails closed on that. Both are
  *     `infra`, so only the reported cause differs — and reporting a missing
  *     working directory as "containment did not load" sends the reader to the
- *     wrong file entirely (observed, A58).
+ *     wrong file entirely (observed, A58). An API that was never reached is
+ *     `infra` here too, and named as such rather than as the cap that ended it.
  *  6. **Then containment liveness** — the session ran but its `--settings`
  *     document never took effect, which in `-p` mode happens silently.
  *  7. **Then the caps** (A32) and the contract (§6.3), which are the only
@@ -457,6 +458,17 @@ export function classifyRun(signals: RunSignals): { status: RunOutcomeStatus; pr
       problem:
         'Der Sitzungsprozess endete unerwartet. Behandelt als Infrastrukturfehler ' +
         '(§11, A25) — mit Backoff wiederholen, nicht rot markieren.',
+    };
+  }
+  // Ahead of the containment verdict for the same reason as the crash: a
+  // session that never reached the API says nothing about its hooks either.
+  if (signals.termination === 'unreachable') {
+    return {
+      status: 'infra',
+      problem:
+        'Anthropic nicht erreichbar — die Sitzung bekam keine Verbindung zur API ' +
+        '(Netz, DNS). Behandelt als Infrastrukturfehler (§11, A25) — später ' +
+        'wiederholen, nicht rot markieren.',
     };
   }
   if (!signals.containment.ok) {
