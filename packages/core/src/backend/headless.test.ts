@@ -508,6 +508,83 @@ describe('classification', () => {
     const events = await collect([], spec(), { VORSCHICHT_STUB_EXIT: '3' });
     expect(events.at(-1)).toMatchObject({ type: 'terminated', reason: 'crashed', exitCode: 3 });
   });
+
+  it('calls an API the CLI gave up on reaching unreachable, not a contract violation', async () => {
+    // The frame the pinned CLI (2.1.220) sends after its last retry, captured
+    // with the network switched off: an error result with no HTTP status.
+    const events = await collect([
+      {
+        type: 'result',
+        subtype: 'success',
+        is_error: true,
+        api_error_status: null,
+        terminal_reason: 'api_error',
+        result: 'API Error: Unable to connect to API (ENOTIMP)',
+        usage: { input_tokens: 0, output_tokens: 0 },
+      },
+    ]);
+    expect(events.at(-1)).toMatchObject({ type: 'terminated', reason: 'unreachable' });
+  });
+});
+
+describe('the wall clock on a session that never reached the API', () => {
+  /**
+   * A stand-in that prints its lines, then waits — the CLI inside its retry
+   * loop — and exits when the wall clock's interrupt arrives on stdin.
+   */
+  const RETRYING_CLI = [
+    'const lines = JSON.parse(process.env.VORSCHICHT_STUB_LINES ?? "[]");',
+    "for (const line of lines) process.stdout.write(JSON.stringify(line) + '\\n');",
+    "process.stdin.on('data', (chunk) => { if (String(chunk).includes('interrupt')) process.exit(0); });",
+  ].join('\n');
+
+  const init = { type: 'system', subtype: 'init', mcp_servers: [], tools: [] };
+  /** One retry frame as the pinned CLI prints it; `null` means no HTTP answer. */
+  const retry = (attempt: number, errorStatus: number | null) => ({
+    type: 'system',
+    subtype: 'api_retry',
+    attempt,
+    max_retries: 10,
+    retry_delay_ms: 500,
+    error_status: errorStatus,
+    error: 'unknown',
+  });
+
+  async function runUntilWallClock(lines: unknown[]): Promise<BackendEvent[]> {
+    return runRaw(
+      ['-e', RETRYING_CLI],
+      { VORSCHICHT_STUB_LINES: JSON.stringify(lines) },
+      spec({ caps: { maxTurns: 1, maxBudgetUsd: null, wallClockMs: 300 } }),
+    );
+  }
+
+  it('reports unreachable when every retry so far had no HTTP answer', async () => {
+    // Without the network the start probe used to end on its three-minute wall
+    // clock and say "Wanduhr-Grenze des Laufs erreicht (A32)" — a cap on work
+    // that never started, repeated every cycle.
+    const events = await runUntilWallClock([init, retry(1, null), retry(2, null)]);
+    expect(events.at(-1)).toMatchObject({ type: 'terminated', reason: 'unreachable' });
+  });
+
+  it('keeps it a timeout when the API did answer, with an error', async () => {
+    // 529 is an overloaded API, not a missing network.
+    const events = await runUntilWallClock([init, retry(1, null), retry(2, 529)]);
+    expect(events.at(-1)).toMatchObject({ type: 'terminated', reason: 'timeout' });
+  });
+
+  it('keeps it a timeout once the model has spoken', async () => {
+    const events = await runUntilWallClock([
+      init,
+      assistantLine('m1', { type: 'text', text: 'working' }),
+      retry(1, null),
+    ]);
+    expect(events.at(-1)).toMatchObject({ type: 'terminated', reason: 'timeout' });
+  });
+
+  it('keeps it a timeout when nothing was retried at all', async () => {
+    const events = await runUntilWallClock([init]);
+    expect(events.at(-1)).toMatchObject({ type: 'terminated', reason: 'timeout' });
+  });
 });
 
 describe('ending a session that has produced its result', () => {

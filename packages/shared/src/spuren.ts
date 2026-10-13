@@ -775,6 +775,8 @@ export function laufAusgang(run: {
       return 'unterbrochen';
     case 'crashed':
       return 'abgestürzt';
+    case 'unreachable':
+      return 'Anthropic nicht erreichbar';
     case null:
       return 'beendet, Grund nicht aufgezeichnet';
     default:

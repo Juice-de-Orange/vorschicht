@@ -127,6 +127,15 @@ describe('classifyRun (§11, A25)', () => {
     expect(verdict.problem).toMatch(/ungeprüft/);
   });
 
+  it('nennt eine nie erreichte API einen Infrastrukturfehler, keine Kappung', () => {
+    // The CLI's give-up frame is a result, so `hasResult` is true — and it
+    // still must not reach the contract check or the A32 wording.
+    const verdict = classifyRun(signals({ termination: 'unreachable', hasResult: true }));
+    expect(verdict.status).toBe('infra');
+    expect(verdict.problem).toMatch(/Anthropic nicht erreichbar/);
+    expect(verdict.problem).not.toMatch(/A32/);
+  });
+
   it.each(['max_turns', 'max_budget', 'timeout'] as const)(
     'behandelt die Kappung %s als gescheiterte Arbeit',
     (termination) => {
