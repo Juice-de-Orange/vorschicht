@@ -5,6 +5,31 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-13
+
+A patch release: two fixes and a dependency update. No migrations, no new settings.
+
+### Fixed
+
+- The container gate heals a stale Playwright browser volume. `in-container.sh` installed the
+  browsers only if *some* `chromium_headless_shell-*` existed, so after the bump to Playwright 1.64
+  a volume holding 1.63's build skipped the install, every browser case failed with "Executable
+  doesn't exist", and the step reported INFRA instead of testing anything. `playwright install
+  chromium` now runs on every start; it downloads only what the lockfile's version lacks (#41).
+- A Claude session that never reaches the API (no network, DNS) ends as `unreachable` and is
+  classified as an infrastructure failure ("Anthropic nicht erreichbar …") instead of hanging for
+  the start probe's full three-minute wall clock and reporting "Wanduhr-Grenze des Laufs erreicht
+  (A32)". A task run in that state is retried rather than marked red; an API that answered with an
+  error, or a session whose model already spoke, still ends as `timeout` (#41).
+
+### Changed
+
+- Dependencies: vite 8 with `@vitejs/plugin-react` 6 for the dashboard build (#31),
+  `@simplewebauthn/browser` 14 for passkey sign-in (#33), and the minor and patch group (#37):
+  Playwright 1.64 (the gate image's system libraries pinned to match), `@modelcontextprotocol/sdk`
+  1.32.1, hono 4.13.13, `@hono/node-server` 2.1.4, drizzle-orm 0.45.4, pino 10.4, vitest 5.0.3,
+  Biome 2.5.15, `@types/node` 22.20.5.
+
 ## [0.1.0] - 2026-10-12
 
 ### Added
