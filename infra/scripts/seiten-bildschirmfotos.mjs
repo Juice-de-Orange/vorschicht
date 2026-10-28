@@ -398,6 +398,76 @@ const PERSONAS = {
   },
 };
 
+/*
+ * Die Seite liest seit §17.9s übrigen Abschnitten `/api/einstellungen` — die
+ * Personas allein reichen ihr nicht mehr. Ohne diese Antwort bekam sie das
+ * Bundle statt JSON und zeichnete ihren Fehlersatz.
+ */
+const EINSTELLUNGEN = {
+  einstellungen: {
+    personas: PERSONAS.personas,
+    betrieb: CONTROLLING.controlling.betrieb,
+    benachrichtigungen: {
+      ntfy: {
+        server: 'https://ntfy.example.com',
+        themen: { inbox: 'vorschicht-inbox', alerts: 'vorschicht-alerts', info: 'vorschicht-info' },
+        tokenGesetzt: true,
+      },
+      mail: {
+        host: 'smtp.example.com',
+        port: 465,
+        secure: true,
+        absender: 'vorschicht@example.com',
+        empfaenger: 'betrieb@example.com',
+        passwortGesetzt: true,
+        einsatzbereit: true,
+      },
+      ruhezeiten: false,
+    },
+    sicherung: {
+      kachel: {
+        id: 'sicherung',
+        label: 'Sicherung',
+        state: 'ok',
+        detail: 'Zuletzt vor 6 Stunden vollständig durchgelaufen.',
+        at: iso(360),
+      },
+      stand: iso(360).slice(0, 10),
+      komponenten: [
+        { id: 'db', label: 'Datenbank', ergebnis: 'ok' },
+        { id: 'docs', label: 'Dokumente', ergebnis: 'ok' },
+        { id: 'transcripts', label: 'Transkripte', ergebnis: 'ok' },
+        { id: 'prune', label: 'Aufräumen', ergebnis: 'ok' },
+      ],
+      problem: null,
+      gemeldetAm: iso(360),
+    },
+    pruefprotokoll: {
+      eintraege: [
+        {
+          id: 3,
+          occurredAt: iso(50),
+          actor: 'dashboard:operator',
+          action: 'project.gate_config_changed',
+          subject: 'vorschicht',
+          before: { gates: { sast: false } },
+          after: { gates: { sast: true } },
+        },
+        {
+          id: 2,
+          occurredAt: iso(300),
+          actor: 'system',
+          action: 'project.created',
+          subject: 'example-app',
+          before: null,
+          after: null,
+        },
+      ],
+      limit: 50,
+    },
+  },
+};
+
 const PROJEKTE = {
   projekte: [
     {
@@ -670,6 +740,28 @@ const SPUREN_LISTE = {
   ],
 };
 
+/*
+ * Das Formular „Aufgabe anlegen" auf derselben Seite fragt nach den Projekten.
+ * Ohne eigene Antwort fing `/api/aufgaben/` unten die Anfrage ab und lieferte
+ * eine Aufgabe, und die ganze Seite brach ab. Echte uuids: das Schema verlangt sie.
+ */
+const PROJEKTWAHL = {
+  projekte: [
+    {
+      id: '66666666-6666-4666-8666-666666666661',
+      slug: 'vorschicht',
+      name: 'Vorschicht',
+      readOnly: true,
+    },
+    {
+      id: '66666666-6666-4666-8666-666666666662',
+      slug: 'example-app',
+      name: 'Example App',
+      readOnly: false,
+    },
+  ],
+};
+
 const LAUF = {
   runId: LAUF_ID,
   taskId: AUFGABE_ID,
@@ -922,6 +1014,7 @@ function starteServer() {
     if (pfad === '/api/entscheidungen') return json(res, { entscheidungen: ENTSCHEIDUNGEN });
 
     if (pfad === '/api/controlling') return json(res, CONTROLLING);
+    if (pfad === '/api/einstellungen') return json(res, EINSTELLUNGEN);
     if (pfad === '/api/einstellungen/personas') return json(res, PERSONAS);
     if (pfad === '/api/projekte') return json(res, PROJEKTE);
 
@@ -943,6 +1036,7 @@ function starteServer() {
     if (pfad.startsWith('/api/quellen/')) return json(res, QUELLE_DETAIL);
 
     if (pfad === '/api/aufgaben') return json(res, SPUREN_LISTE);
+    if (pfad === '/api/aufgaben/projektwahl') return json(res, PROJEKTWAHL);
     if (pfad.startsWith('/api/aufgaben/')) return json(res, AUFGABE_DETAIL);
     if (pfad.startsWith('/api/laeufe/')) return json(res, LAUF_DETAIL);
 
