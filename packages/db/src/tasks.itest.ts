@@ -172,17 +172,47 @@ describe.skipIf(!url)('Aufgaben-Lebenszyklus (0006)', () => {
         INSERT INTO task_events (task_id, seq, kind, project_id, state, priority, actor)
         VALUES (${id}, 4, 'state_changed', ${PROJECT}, ${state}, 'P2', 'coder')
       `;
-      const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+      // No fixed sleeps: under load a 30 ms head start can outlast the whole
+      // first transaction, and the second writer then meets the trigger instead
+      // of the unique index. The first writer commits only once the second one
+      // is provably blocked on its uncommitted row.
+      let firstInserted = () => {};
+      const afterFirstInsert = new Promise<void>((resolve) => {
+        firstInserted = resolve;
+      });
+      let secondPid: number | undefined;
+      let secondDone = false;
+      const secondIsBlocked = async () => {
+        // Also stops when the second writer has already finished, so a
+        // regression fails on the assertions below instead of hanging here.
+        while (!secondDone) {
+          const [row] = await sql<Array<{ waiting: boolean }>>`
+            SELECT wait_event_type = 'Lock' AS waiting FROM pg_stat_activity WHERE pid = ${secondPid ?? 0}
+          `;
+          if (row?.waiting) return;
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+      };
 
       const results = await Promise.allSettled([
         sql.begin(async (tx) => {
-          await insert(tx, 'review');
-          await wait(150);
+          try {
+            await insert(tx, 'review');
+          } finally {
+            firstInserted();
+          }
+          await secondIsBlocked();
         }),
         sql.begin(async (tx) => {
-          // Starts second and blocks on the unique key until the first commits.
-          await wait(30);
-          await insert(tx, 'red');
+          // Inserts second and blocks on the unique key until the first commits.
+          await afterFirstInsert;
+          const [backend] = await tx<Array<{ pid: number }>>`SELECT pg_backend_pid() AS pid`;
+          secondPid = backend?.pid;
+          try {
+            await insert(tx, 'red');
+          } finally {
+            secondDone = true;
+          }
         }),
       ]);
 
