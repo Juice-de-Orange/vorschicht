@@ -13,7 +13,7 @@
  * against the author's idea of the format (A80's lesson: a checker's first run
  * against input nobody designed it for is worth more than its unit tests).
  */
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -150,7 +150,12 @@ describe('readDependencies', () => {
     const zod = inventory.dependencies.find(
       (entry) => entry.name === 'zod' && entry.importer === 'packages/core',
     );
-    expect(zod?.specifier).toBe('^4.1.13');
+    // The range comes from the manifest, not from this file: a pinned literal
+    // turned every Dependabot bump of zod's range into a red gate.
+    const manifest = JSON.parse(
+      await readFile(join(repoRoot, 'packages/core/package.json'), 'utf8'),
+    ) as { dependencies: Record<string, string> };
+    expect(zod?.specifier).toBe(manifest.dependencies.zod);
     expect(zod?.current).toMatch(/^4\.\d+\.\d+$/);
     // Every workspace link skipped, and none of them mistaken for a version.
     expect(inventory.dependencies.some((entry) => entry.current.startsWith('link:'))).toBe(false);
