@@ -289,6 +289,7 @@ test.describe
       // The counter and the list are one derivation — asserted as a relation,
       // because the three Playwright projects share a database and an absolute
       // number here would depend on what else ran.
+      // biome-ignore lint/performance/useDomNodeTextContent: a Playwright locator, not a DOM node
       const zahl = await page.getByTestId('entscheidungen-zahl').innerText();
       const [gezeigt] = zahl.match(/\d+/g) ?? [];
       await expect(page.getByTestId('entscheidungsliste').locator('> li')).toHaveCount(
