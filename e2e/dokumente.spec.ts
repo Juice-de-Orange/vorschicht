@@ -113,6 +113,7 @@ async function sessionUser(page: Page): Promise<string> {
  * route accepts, and this suite goes red instead of quietly proving nothing.
  */
 async function grenzeInBytes(page: Page): Promise<number> {
+  // biome-ignore lint/performance/useDomNodeTextContent: a Playwright locator, not a DOM node
   const text = await page.getByTestId('upload-grenze').innerText();
   const megabytes = Number(text.match(/(\d+)\s*MB/)?.[1]);
   expect(Number.isFinite(megabytes)).toBe(true);
