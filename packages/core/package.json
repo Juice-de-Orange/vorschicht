@@ -28,7 +28,7 @@
     "@vorschicht/db": "workspace:*",
     "@vorschicht/shared": "workspace:*",
     "pg-boss": "^11.0.4",
-    "postgres": "^3.4.9",
+    "postgres": "^4.0.0",
     "zod": "^4.6.7"
   }
 }
